@@ -7,7 +7,7 @@
     CROPS, CROP_ORDER, PRODUCTS, FEED_BUY_PRICE, FEED_RECIPES,
     ANIMALS, ANIMAL_ORDER, PLOT_PRICE, START_UNLOCKED, GREENHOUSE_PRICE,
     PEN_PRICE, MAX_PENS, START_PENS, XP_TABLE, WINTER_FEED_FACTOR, GH_WINTER_GROWTH,
-    FERTILIZER_BOOST, LEVEL_REWARDS, DECOR_NAME,
+    FERTILIZER_BOOST, LEVEL_REWARDS, DECOR_NAME, GIFT,
     UPGRADES, UPGRADE_ORDER, FARMER_TIPS,
   } = D;
   const defaultUpgrades = D.defaultUpgrades;
@@ -18,7 +18,7 @@
 
   const SAVE_KEY = "shest-sotok-v4";
   const SAVE_KEYS_OLD = ["shest-sotok-v3", "shest-sotok-v2", "shest-sotok-v1"];
-  const ASSET_VER = D.ASSET_VER || "20261114a";
+  const ASSET_VER = D.ASSET_VER || "20261114b";
   const TICK_MS = 250;
   const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
 
@@ -98,6 +98,7 @@
       savedAt: t,
       timingVersion: 4,
       timingMode: D.TIMING.fast ? "fast" : "play",
+      redeemedGifts: [],
     };
   }
 
@@ -563,6 +564,9 @@
     }
     next.timingVersion = 4;
     next.timingMode = currentMode;
+    next.redeemedGifts = Array.isArray(data.redeemedGifts)
+      ? data.redeemedGifts.filter((id) => typeof id === "string")
+      : [];
     return next;
   }
 
@@ -1942,6 +1946,7 @@
     applyFertilizer,
     rewardPreview: (level, season) => rewardPreview(level, season || calendarAt().seasonId),
     levelRewards: LEVEL_REWARDS,
+    redeemGift,
     isFast: () => !!D.TIMING.fast,
     timing: () => ({ DAY_MS, DAYS_PER_SEASON, fast: !!D.TIMING.fast }),
     suspendSave() { persistEnabled = false; },
@@ -1952,6 +1957,49 @@
     hasWell: () => !!(state.upgrades && state.upgrades.well),
   };
 
+  function readGiftCode() {
+    try {
+      const q = new URLSearchParams(location.search);
+      const fromQuery = q.get("gift");
+      if (fromQuery) return String(fromQuery).trim();
+    } catch { /* ignore */ }
+    try {
+      let param = tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param;
+      if (param) {
+        param = String(param).trim();
+        if (param.startsWith("gift_")) param = param.slice(5);
+        return param;
+      }
+    } catch { /* ignore */ }
+    return "";
+  }
+
+  async function sha256hex(text) {
+    const bytes = new TextEncoder().encode(String(text));
+    if (!globalThis.crypto || !crypto.subtle) return "";
+    const buf = await crypto.subtle.digest("SHA-256", bytes);
+    return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  async function redeemGift() {
+    const def = GIFT || D.GIFT;
+    if (!def || !def.hash || !state) return false;
+    const code = readGiftCode();
+    if (!code) return false;
+    const digest = await sha256hex(code);
+    if (!digest || digest !== String(def.hash).toLowerCase()) return false;
+    if (!Array.isArray(state.redeemedGifts)) state.redeemedGifts = [];
+    if (state.redeemedGifts.includes(def.id)) return false;
+    const amount = Number(def.coins) || 1_000_000;
+    state.coins += amount;
+    state.redeemedGifts.push(def.id);
+    save();
+    haptic("success");
+    toast("Премия: +1 000 000 руб.");
+    renderAll();
+    return true;
+  }
+
   function boot() {
     preloadAssets();
     state = defaultState();
@@ -1959,7 +2007,7 @@
     loadLocal();
     loadCloudThen(() => {
       sync();
-      renderAll();
+      redeemGift().then(() => { renderAll(); });
     });
     const app = document.getElementById("app");
     if (app) app.dataset.view = currentView;

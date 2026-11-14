@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VER = (window.SOTOK_DATA && window.SOTOK_DATA.ASSET_VER) || "20261114a";
+  const VER = (window.SOTOK_DATA && window.SOTOK_DATA.ASSET_VER) || "20261114b";
   const A = (path) => `assets/${path}.webp?v=${VER}`;
   const TRANSPORT = ["bike", "moped", "sedan"];
 

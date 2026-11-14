@@ -2,7 +2,14 @@
 window.SOTOK_DATA = (() => {
   "use strict";
 
-  const ASSET_VER = "20261114a";
+  const ASSET_VER = "20261114b";
+
+  /* One-time owner gift: only the SHA-256 of the secret code is stored here. */
+  const GIFT = {
+    id: "premiya-1",
+    coins: 1_000_000,
+    hash: "470acd16bbb80c46be2244974ada1be8c065dc40239fa385a758426e711f71a6",
+  };
 
   const TIMING = {
     // Live play: one season lasts this many real-world days (12 in-game days).
@@ -454,6 +461,6 @@ window.SOTOK_DATA = (() => {
     PEN_PRICE, MAX_PENS, START_PENS, XP_TABLE, WINTER_FEED_FACTOR, GH_WINTER_GROWTH,
     FERTILIZER_BOOST, LEVEL_REWARDS, DECOR_NAME, PLAY_CROP_GROW_MS, PLAY_ANIMAL_TIMES,
     UPGRADES, UPGRADE_ORDER, FARMER_TIPS, defaultUpgrades,
-    isFastMode, applyTiming,
+    isFastMode, applyTiming, GIFT,
   };
 })();
