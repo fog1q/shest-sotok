@@ -7,6 +7,7 @@
     CROPS, CROP_ORDER, PRODUCTS, FEED_BUY_PRICE, FEED_RECIPES,
     ANIMALS, ANIMAL_ORDER, PLOT_PRICE, START_UNLOCKED, GREENHOUSE_PRICE,
     PEN_PRICE, MAX_PENS, START_PENS, XP_TABLE, WINTER_FEED_FACTOR, GH_WINTER_GROWTH,
+    FERTILIZER_BOOST, LEVEL_REWARDS, DECOR_NAME,
     UPGRADES, UPGRADE_ORDER, FARMER_TIPS,
   } = D;
   const defaultUpgrades = D.defaultUpgrades;
@@ -15,8 +16,9 @@
   let DAYS_PER_SEASON = D.TIMING.DAYS_PER_SEASON;
   const seasonMs = () => DAY_MS * DAYS_PER_SEASON;
 
-  const SAVE_KEY = "shest-sotok-v3";
-  const SAVE_KEYS_OLD = ["shest-sotok-v2", "shest-sotok-v1"];
+  const SAVE_KEY = "shest-sotok-v4";
+  const SAVE_KEYS_OLD = ["shest-sotok-v3", "shest-sotok-v2", "shest-sotok-v1"];
+  const ASSET_VER = D.ASSET_VER || "20261114a";
   const TICK_MS = 250;
   const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
 
@@ -31,7 +33,7 @@
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
   function emptyWarehouse() {
-    const w = { feed: 0 };
+    const w = { feed: 0, fertilizer: 0 };
     for (const id of CROP_ORDER) w[id] = 0;
     for (const id of Object.keys(PRODUCTS)) w[id] = 0;
     return w;
@@ -56,6 +58,7 @@
       grownMs: 0,
       wateredUntil: 0,
       withered: false,
+      fertilized: false,
     };
   }
 
@@ -69,15 +72,17 @@
       grownMs: 0,
       wateredUntil: 0,
       withered: false,
+      fertilized: false,
     };
   }
 
   function defaultState() {
     const t = now();
     return {
-      version: 3,
+      version: 4,
       coins: 80,
       xp: 0,
+      claimedLevel: 1,
       seeds: emptySeeds(),
       warehouse: emptyWarehouse(),
       plots: Array.from({ length: 9 }, (_, i) => defaultPlot(i)),
@@ -91,6 +96,8 @@
       lastSimAt: t,
       lastStormDay: -1,
       savedAt: t,
+      timingVersion: 4,
+      timingMode: D.TIMING.fast ? "fast" : "play",
     };
   }
 
@@ -105,7 +112,10 @@
   }
 
   function warehouseUsed() {
-    return Object.values(state.warehouse || {}).reduce((s, n) => s + (Number(n) || 0), 0);
+    return Object.entries(state.warehouse || {}).reduce((s, [k, n]) => {
+      if (k === "fertilizer") return s;
+      return s + (Number(n) || 0);
+    }, 0);
   }
 
   function canStore(n = 1) {
@@ -199,9 +209,15 @@
   }
 
   function formatTime(ms) {
+    if (!Number.isFinite(ms)) return "—";
     const total = Math.max(0, Math.ceil(ms / 1000));
-    const m = Math.floor(total / 60);
+    const d = Math.floor(total / 86400);
+    const h = Math.floor((total % 86400) / 3600);
+    const m = Math.floor((total % 3600) / 60);
     const s = total % 60;
+    if (d > 0) return h ? `${d} д ${h} ч` : `${d} д`;
+    if (h > 0) return m ? `${h} ч ${m} мин` : `${h} ч`;
+    if (m >= 10) return `${m} мин`;
     return `${m}:${String(s).padStart(2, "0")}`;
   }
 
@@ -395,6 +411,27 @@
         if (tg.disableVerticalSwipes) {
           try { tg.disableVerticalSwipes(); } catch (_) { /* optional */ }
         }
+        if (typeof tg.requestFullscreen === "function") {
+          try { tg.requestFullscreen(); } catch (_) { /* optional */ }
+        }
+        const applySafe = () => {
+          try {
+            const sa = tg.safeAreaInset || {};
+            const csa = tg.contentSafeAreaInset || {};
+            const root = document.documentElement.style;
+            root.setProperty("--sat", `${(sa.top || 0) + (csa.top || 0)}px`);
+            root.setProperty("--sab", `${(sa.bottom || 0) + (csa.bottom || 0)}px`);
+          } catch (_) { /* ignore */ }
+        };
+        applySafe();
+        if (typeof tg.onEvent === "function") {
+          tg.onEvent("viewportChanged", () => {
+            try { if (typeof tg.expand === "function") tg.expand(); } catch (_) { /* ignore */ }
+            applySafe();
+          });
+          tg.onEvent("safeAreaChanged", applySafe);
+          tg.onEvent("contentSafeAreaChanged", applySafe);
+        }
         const user = tg.initDataUnsafe && tg.initDataUnsafe.user;
         if (user && user.first_name) name = user.first_name;
       } catch (err) {
@@ -406,7 +443,9 @@
     if (homeGreet) homeGreet.textContent = `Здравствуйте, ${name}!`;
   }
 
+  let persistEnabled = true;
   function persistLocal() {
+    if (!persistEnabled) return;
     state.savedAt = now();
     try { localStorage.setItem(SAVE_KEY, JSON.stringify({ ...state, _timeOffsetIgnored: true })); }
     catch (err) { console.warn("localStorage save failed", err); }
@@ -443,7 +482,7 @@
     return {
       ...base,
       ...data,
-      version: 3,
+      version: 4,
       seeds,
       warehouse: { ...emptyWarehouse(), ...(data.warehouse || {}) },
       plots: base.plots.map((p, i) => ({ ...p, ...(data.plots && data.plots[i] || {}) })),
@@ -456,19 +495,91 @@
     };
   }
 
+  function scaleGrowth(plot, fromFast) {
+    if (!plot || !plot.cropId) return plot;
+    const crop = CROPS[plot.cropId];
+    if (!crop) return plot;
+    const oldG = fromFast ? (crop.growMsFast || crop.growMs) : crop.growMs;
+    const newG = crop.growMs;
+    if (!oldG) return plot;
+    if (plot.grownMs >= oldG) plot.grownMs = newG;
+    else plot.grownMs = plot.grownMs * (newG / oldG);
+    return plot;
+  }
+
+  function scaleAnimal(animal, fromFast) {
+    if (!animal) return animal;
+    const def = ANIMALS[animal.kind];
+    if (!def) return animal;
+    const oldG = fromFast ? (def.growMsFast || def.growMs) : def.growMs;
+    const newG = def.growMs;
+    if (oldG && animal.grownMs) {
+      if (animal.grownMs >= oldG) animal.grownMs = newG;
+      else animal.grownMs = animal.grownMs * (newG / oldG);
+    }
+    const oldP = fromFast ? (def.productTimeFast || def.productTime) : def.productTime;
+    const newP = def.productTime;
+    if (oldP && animal.productMs) {
+      if (animal.productMs >= oldP) animal.productMs = newP;
+      else animal.productMs = animal.productMs * (newP / oldP);
+    }
+    return animal;
+  }
+
+  function rebaseCalendar(next, raw, oldDayMs) {
+    const ts = now();
+    const started = typeof raw.worldStartedAt === "number" ? raw.worldStartedAt : ts;
+    const last = typeof raw.lastSimAt === "number" ? raw.lastSimAt : ts;
+    const elapsedOld = Math.max(0, last - started);
+    const oldDay = oldDayMs || D.TIMING.LEGACY_DAY_MS;
+    next.worldStartedAt = ts - (elapsedOld / oldDay) * DAY_MS;
+    next.lastSimAt = ts;
+  }
+
+  function migrateToV4(data, base) {
+    const next = migrateFromV2(data, base);
+    next.version = 4;
+    next.warehouse = { ...emptyWarehouse(), ...(next.warehouse || {}) };
+    if (typeof next.warehouse.fertilizer !== "number") next.warehouse.fertilizer = 0;
+    next.claimedLevel = typeof data.claimedLevel === "number"
+      ? data.claimedLevel
+      : levelFromXp(typeof data.xp === "number" ? data.xp : 0);
+    next.plots = (next.plots || []).map((p) => ({ fertilized: false, ...p }));
+    next.greenhouse = (next.greenhouse || []).map((p) => ({ fertilized: false, ...p }));
+    const alreadyV4 = data.version === 4 && data.timingVersion === 4;
+    const currentMode = D.TIMING.fast ? "fast" : "play";
+    if (!alreadyV4) {
+      rebaseCalendar(next, data, D.TIMING.LEGACY_DAY_MS);
+      const fromFast = true;
+      next.plots.forEach((p) => scaleGrowth(p, fromFast));
+      next.greenhouse.forEach((p) => scaleGrowth(p, fromFast));
+      next.animals = (next.animals || []).map((a) => scaleAnimal({ ...a }, fromFast));
+    } else if (data.timingMode && data.timingMode !== currentMode) {
+      const fromFast = data.timingMode === "fast";
+      next.plots.forEach((p) => scaleGrowth(p, fromFast));
+      next.greenhouse.forEach((p) => scaleGrowth(p, fromFast));
+      next.animals = (next.animals || []).map((a) => scaleAnimal({ ...a }, fromFast));
+      rebaseCalendar(next, data, fromFast ? D.TIMING.FAST_DAY_MS : Math.floor(D.TIMING.SEASON_REAL_DAYS * 86400000 / D.TIMING.DAYS_PER_SEASON));
+    }
+    next.timingVersion = 4;
+    next.timingMode = currentMode;
+    return next;
+  }
+
   function migrate(raw) {
     if (!raw) return null;
     let data;
     try { data = typeof raw === "string" ? JSON.parse(raw) : raw; } catch { return null; }
     if (!data || typeof data !== "object") return null;
     const base = defaultState();
-    if ((data.version === 3 || data.version === 2) && Array.isArray(data.plots)) {
-      return migrateFromV2(data, base);
+    if ((data.version === 4 || data.version === 3 || data.version === 2) && Array.isArray(data.plots)) {
+      return migrateToV4(data, base);
     }
     if (data.version === 1) {
       const next = defaultState();
       next.coins = typeof data.coins === "number" ? data.coins : next.coins;
       next.xp = typeof data.xp === "number" ? data.xp : 0;
+      next.claimedLevel = levelFromXp(next.xp);
       next.plots = next.plots.map((p, i) => ({
         ...p,
         unlocked: Boolean(data.plots && data.plots[i] && data.plots[i].unlocked) || p.unlocked,
@@ -494,13 +605,22 @@
   function loadCloudThen(cb) {
     if (!tg || !tg.CloudStorage || typeof tg.CloudStorage.getItem !== "function") { cb(); return; }
     try {
-      tg.CloudStorage.getItem(SAVE_KEY, (err, value) => {
-        if (!err && value) {
-          const cloud = migrate(value);
-          if (cloud && (cloud.savedAt || 0) >= (state.savedAt || 0)) state = cloud;
-        }
-        cb();
-      });
+      const tryKeys = [SAVE_KEY, ...SAVE_KEYS_OLD];
+      const readNext = (i) => {
+        if (i >= tryKeys.length) { cb(); return; }
+        tg.CloudStorage.getItem(tryKeys[i], (err, value) => {
+          if (!err && value) {
+            const cloud = migrate(value);
+            if (cloud && (cloud.savedAt || 0) >= (state.savedAt || 0)) {
+              state = cloud;
+              cb();
+              return;
+            }
+          }
+          readNext(i + 1);
+        });
+      };
+      readNext(0);
     } catch { cb(); }
   }
 
@@ -524,7 +644,7 @@
 
   /* ——— Art ——— */
   function art(path) {
-    return `assets/${path}.webp`;
+    return `assets/${path}.webp?v=${ASSET_VER}`;
   }
 
   function cropIcon(cropId) {
@@ -818,8 +938,35 @@
     const sellAll = $("#btn-sell-all");
     if (!list) return;
     const capHint = document.querySelector("#view-barn .hint");
-    if (capHint) capHint.textContent = `Занято ${warehouseUsed()} из ${storageCap()}. Урожай, цветы и продукты можно сдать за рубли.`;
+    if (capHint) capHint.textContent = `Занято ${warehouseUsed()} из ${storageCap()}. Семена из мешочка сажаются бесплатно.`;
     const blocks = [];
+    const seedItems = CROP_ORDER.filter((id) => (state.seeds[id] || 0) > 0);
+    if (seedItems.length) {
+      const rows = seedItems.map((id) => {
+        const crop = CROPS[id];
+        const n = state.seeds[id];
+        return `<div class="seed-stock" data-testid="barn-seed-${id}">
+          <div class="thumb">${cropIcon(id)}</div>
+          <div><b>${crop.name}</b><span>${n} пак. · посадка бесплатно</span></div>
+        </div>`;
+      }).join("");
+      blocks.push(`<article class="card pouch-card" data-testid="barn-seeds">
+        <div class="thumb">${cropIcon(seedItems[0])}</div>
+        <div>
+          <h3>Мешочек семян</h3>
+          <p class="meta">Хранится в сарае. На грядке семена сажаются без платы.</p>
+          <div class="seed-stock-list">${rows}</div>
+        </div>
+      </article>`);
+    }
+    const fertN = state.warehouse.fertilizer || 0;
+    blocks.push(`<article class="card" data-testid="barn-fertilizer">
+      <div class="thumb">${productIcon("fertilizer")}</div>
+      <div>
+        <h3>Удобрение</h3>
+        <p class="meta">В запасе: ${fertN}. Внесите на растущую грядку — ускорит оставшийся рост вдвое.</p>
+      </div>
+    </article>`);
     const cropItems = CROP_ORDER.filter((id) => (state.warehouse[id] || 0) > 0);
     for (const id of cropItems) {
       const crop = CROPS[id];
@@ -866,7 +1013,7 @@
         <div class="craft-list">${craftRows}</div>
       </div>
     </article>`);
-    if (!cropItems.length && !["egg", "down", "milk", "wool"].some((id) => state.warehouse[id])) {
+    if (!cropItems.length && !["egg", "down", "milk", "wool"].some((id) => state.warehouse[id]) && !seedItems.length && !fertN) {
       list.innerHTML = `<div class="empty-barn" data-testid="barn-empty">Сарай пока пуст. Соберите урожай или продукцию двора.</div>` + blocks.join("");
     } else {
       list.innerHTML = blocks.join("");
@@ -912,7 +1059,10 @@
         const canCollect = animal.adult && def.product && animal.productMs >= def.productTime && !hungry;
         const sell = animal.adult ? def.sellAdult : def.sellBaby;
         cells.push(`<div class="pen ${hungry ? "hungry" : ""}" data-testid="pen-${i}">
-          ${animalMarkup(animal)}
+          <div class="paddock">
+            <img class="paddock-frame" src="${art("decor/pen")}" alt="">
+            <div class="paddock-inner">${animalMarkup(animal)}</div>
+          </div>
           <div class="pen-info">
             <b>${name}</b>
             <span>${status}</span>
@@ -1199,11 +1349,13 @@
       if (prog.remainMs === Infinity) extra = " На улице рост сейчас стоит — ждите тепла или сажайте в теплице.";
       else if (heat && !watered) extra = " Жара: полейте грядку, чтобы не терять время.";
       else if (weather.id === "rain") extra = " Дождь ускоряет рост.";
+      const canFert = (state.warehouse.fertilizer || 0) > 0 && !plot.fertilized && prog.remainMs !== Infinity && prog.remainMs > 0;
       openSheet(`<h3>${prog.crop.name}</h3>
-        <p>${prog.remainMs === Infinity ? "Рост остановился." : `Ещё растёт. Осталось ${formatTime(prog.remainMs)}.`}${extra}</p>
+        <p>${prog.remainMs === Infinity ? "Рост остановился." : `Ещё растёт. Осталось ${formatTime(prog.remainMs)}.`}${extra}${plot.fertilized ? " Удобрение уже внесено." : ""}</p>
         <div class="sheet-actions">
           <button type="button" class="btn primary" data-close-sheet>Понятно</button>
           ${heat && !watered ? `<button type="button" class="btn good" data-water="${plot.id}" data-testid="confirm-water">Полить</button>` : ""}
+          ${canFert ? `<button type="button" class="btn good" data-fertilize="${plot.id}" data-testid="confirm-fertilize">Удобрить (${state.warehouse.fertilizer})</button>` : ""}
         </div>`);
       return;
     }
@@ -1219,12 +1371,12 @@
       const have = state.seeds[crop.id] || 0;
       return `<button type="button" class="seed-row" data-plant="${plot.id}" data-crop="${crop.id}" data-testid="plant-${crop.id}" ${have ? "" : "disabled"}>
         <div class="thumb">${cropIcon(crop.id)}</div>
-        <div style="flex:1"><b>${crop.name}</b><span>Семена: ${have} · ${crop.type === "flower" ? "цветы" : "овощи"} · ${formatTime(crop.growMs)}</span></div>
+        <div style="flex:1"><b>${crop.name}</b><span>В мешочке: ${have} · посадка бесплатно · ${crop.type === "flower" ? "цветы" : "овощи"} · ${formatTime(crop.growMs)}</span></div>
       </button>`;
     }).join("");
     const any = options.some((c) => (state.seeds[c.id] || 0) > 0);
     openSheet(`<h3>${plot.kind === "greenhouse" ? "Что посадим в теплице?" : "Что посадим?"}</h3>
-      <p>${any ? "Только культуры текущего сезона (в теплице — ещё и зимние)." : "Нет подходящих семян — сходите в сельпо."}</p>
+      <p>${any ? "Семена из сарая сажаются бесплатно. Только культуры текущего сезона (в теплице — ещё и зимние)." : "Нет подходящих семян — сходите в сельпо."}</p>
       <div class="seed-list">${rows || "<p>Для этого места сейчас нет доступных культур.</p>"}</div>
       <div class="sheet-actions">
         <button type="button" class="btn" data-close-sheet>Закрыть</button>
@@ -1278,6 +1430,7 @@
     plot.plantedAt = now();
     plot.grownMs = 0;
     plot.withered = false;
+    plot.fertilized = false;
     save(); haptic("medium"); closeSheet(); toast(`Посадили: ${crop.name}`); renderAll();
   }
 
@@ -1288,19 +1441,17 @@
     const prog = cropProgress(plot);
     if (!prog || !prog.ready) return;
     if (!canStore(1)) { toast("Сарай полон. Сдайте урожай или улучшите его."); return; }
-    const prev = levelFromXp(state.xp);
     state.warehouse[prog.crop.id] = (state.warehouse[prog.crop.id] || 0) + 1;
     const xpGain = prog.crop.xp + (state.upgrades.bathhouse ? 1 : 0);
-    state.xp += xpGain;
     plot.cropId = null;
     plot.plantedAt = null;
     plot.grownMs = 0;
     plot.withered = false;
+    plot.fertilized = false;
+    addXp(xpGain);
     save(); haptic("success"); closeSheet();
     toast(`Собрано: ${prog.crop.name}  ·  +${xpGain} опыта`);
     renderAll();
-    const next = levelFromXp(state.xp);
-    if (next > prev) onLevelUp(next);
   }
 
   function clearPlot(plotId) {
@@ -1310,6 +1461,7 @@
     plot.plantedAt = null;
     plot.grownMs = 0;
     plot.withered = false;
+    plot.fertilized = false;
     save(); closeSheet(); toast("Грядка очищена"); renderAll();
   }
 
@@ -1340,7 +1492,7 @@
     sync();
     const crop = CROPS[id];
     const prod = PRODUCTS[id];
-    if (id === "feed") return;
+    if (id === "feed" || id === "fertilizer") return;
     const count = state.warehouse[id] || 0;
     if (count < 1) return;
     const price = crop ? crop.sellPrice : (prod ? prod.sellPrice : 0);
@@ -1419,14 +1571,11 @@
     const amount = 1 + (def.productBonus || 0);
     if (!canStore(amount)) { toast("Сарай полон. Сдайте продукцию или улучшите сарай."); return; }
     state.warehouse[def.product] = (state.warehouse[def.product] || 0) + amount;
-    state.xp += def.productXp;
     animal.productMs = 0;
-    const prev = levelFromXp(state.xp - def.productXp);
+    addXp(def.productXp);
     save(); haptic("success");
     toast(`Собрали: ${PRODUCTS[def.product].name}  ·  +${def.productXp} опыта`);
     renderAll();
-    const next = levelFromXp(state.xp);
-    if (next > prev) onLevelUp(next);
   }
 
   function sellAnimal(id) {
@@ -1441,17 +1590,235 @@
     save(); haptic("success"); toast(`Продали ${animal.adult ? def.adultName : def.babyName}: +${rub(price)}`); renderAll();
   }
 
+  function cropInSeason(crop, seasonId) {
+    if (!crop) return false;
+    if (crop.seasons && crop.seasons.includes(seasonId)) return true;
+    if (seasonId === "winter" && crop.greenhouse) return true;
+    return false;
+  }
+
+  function pickSeasonalSeedPacks(level, packs, seasonId) {
+    const bag = {};
+    if (!packs) return bag;
+    const unlockedNow = CROP_ORDER.filter((id) => {
+      const c = CROPS[id];
+      return c.unlockLevel === level && cropInSeason(c, seasonId);
+    });
+    const seasonal = CROP_ORDER.filter((id) => {
+      const c = CROPS[id];
+      return c.unlockLevel <= level && cropInSeason(c, seasonId);
+    });
+    let left = packs;
+    for (const id of unlockedNow) {
+      if (left <= 0) break;
+      bag[id] = (bag[id] || 0) + 1;
+      left -= 1;
+    }
+    const pool = seasonal.length ? seasonal : CROP_ORDER.filter((id) => CROPS[id].unlockLevel <= level);
+    let i = 0;
+    while (left > 0 && pool.length) {
+      const id = pool[i % pool.length];
+      bag[id] = (bag[id] || 0) + 1;
+      left -= 1;
+      i += 1;
+    }
+    return bag;
+  }
+
+  function describeReward(granted) {
+    const lines = [];
+    if (granted.coins) lines.push(`${rub(granted.coins)}`);
+    if (granted.seeds) {
+      const parts = Object.entries(granted.seeds).map(([id, n]) => `${CROPS[id] ? CROPS[id].name : id} × ${n}`);
+      if (parts.length) lines.push(`Семена: ${parts.join(", ")}`);
+    }
+    if (granted.feed) lines.push(`Комбикорм: ${granted.feed} меш.`);
+    if (granted.fertilizer) lines.push(`Удобрение: ${granted.fertilizer}`);
+    if (granted.freePlot) lines.push(granted.freePlotName || "Новая грядка");
+    if (granted.freePen) lines.push("Новый загон");
+    if (granted.decor) lines.push(DECOR_NAME[granted.decor] || granted.decor);
+    if (granted.bonusCoins) lines.push(`Ещё ${rub(granted.bonusCoins)} взамен уже имеющегося подарка`);
+    return lines;
+  }
+
+  function applyLevelReward(level, seasonId) {
+    const def = LEVEL_REWARDS[level];
+    if (!def) return null;
+    const granted = { level };
+    if (def.coins) {
+      state.coins += def.coins;
+      granted.coins = def.coins;
+    }
+    if (def.seedPacks) {
+      const bag = pickSeasonalSeedPacks(level, def.seedPacks, seasonId);
+      for (const [id, n] of Object.entries(bag)) state.seeds[id] = (state.seeds[id] || 0) + n;
+      granted.seeds = bag;
+    }
+    if (def.feed) {
+      state.warehouse.feed = (state.warehouse.feed || 0) + def.feed;
+      granted.feed = def.feed;
+    }
+    if (def.fertilizer) {
+      state.warehouse.fertilizer = (state.warehouse.fertilizer || 0) + def.fertilizer;
+      granted.fertilizer = def.fertilizer;
+    }
+    if (def.freePlot) {
+      const plot = state.plots.find((p) => !p.unlocked);
+      if (plot) {
+        plot.unlocked = true;
+        granted.freePlot = true;
+        granted.freePlotName = "Новая грядка";
+      } else {
+        const gh = state.greenhouse.find((p) => !p.unlocked);
+        if (gh) {
+          gh.unlocked = true;
+          granted.freePlot = true;
+          granted.freePlotName = "Теплица";
+        } else {
+          state.coins += 50;
+          granted.bonusCoins = (granted.bonusCoins || 0) + 50;
+        }
+      }
+    }
+    if (def.freePen) {
+      if (state.pens < MAX_PENS) {
+        state.pens += 1;
+        granted.freePen = true;
+      } else {
+        state.coins += 50;
+        granted.bonusCoins = (granted.bonusCoins || 0) + 50;
+      }
+    }
+    if (def.decor && UPGRADES[def.decor]) {
+      if (!state.upgrades[def.decor]) {
+        state.upgrades[def.decor] = true;
+        granted.decor = def.decor;
+      } else {
+        state.coins += 50;
+        granted.bonusCoins = (granted.bonusCoins || 0) + 50;
+      }
+    }
+    granted.lines = describeReward(granted);
+    return granted;
+  }
+
+  function rewardPreview(level, seasonId) {
+    const def = LEVEL_REWARDS[level];
+    if (!def) return null;
+    const fake = {
+      coins: def.coins,
+      seeds: pickSeasonalSeedPacks(level, def.seedPacks || 0, seasonId),
+      feed: def.feed,
+      fertilizer: def.fertilizer,
+      freePlot: def.freePlot,
+      freePlotName: def.freePlot ? "Новая грядка" : null,
+      freePen: def.freePen,
+      decor: def.decor,
+    };
+    fake.lines = describeReward(fake);
+    fake.level = level;
+    return fake;
+  }
+
+  function closeGramota() {
+    const el = $("#gramota");
+    if (el) el.classList.add("hidden");
+  }
+
+  function showGramota(granted) {
+    const box = $("#gramota-content");
+    const root = $("#gramota");
+    if (!box || !root) return;
+    const lines = (granted.lines || []).map((l) => `<li>${l}</li>`).join("");
+    box.innerHTML = `
+      <p class="gramota-org">Садовое товарищество «Шесть соток»</p>
+      <h2 class="gramota-title" id="gramota-title">Почётная грамота</h2>
+      <p class="gramota-lead">Приказом правления вам присвоен <b>${granted.level}-й разряд</b> дачника.</p>
+      <p class="gramota-sub">В ознаменование трудовых успехов выдаётся:</p>
+      <ul class="gramota-list" data-testid="gramota-rewards">${lines || "<li>Открыты новые семена и товары в сельпо.</li>"}</ul>
+      <div class="gramota-stamp" aria-hidden="true">Шесть<br>соток</div>
+      <div class="sheet-actions">
+        <button type="button" class="btn primary" data-close-gramota data-testid="gramota-close">С благодарностью принять</button>
+      </div>`;
+    root.classList.remove("hidden");
+    haptic("success");
+  }
+
+  function closeXpPreview() {
+    const el = $("#xp-preview");
+    if (el) el.classList.add("hidden");
+  }
+
+  function showXpPreview() {
+    const box = $("#xp-preview-content");
+    const root = $("#xp-preview");
+    if (!box || !root) return;
+    const b = xpBounds(state.xp);
+    const cal = calendarAt();
+    const nextLv = b.level + 1;
+    const preview = !b.maxed ? rewardPreview(nextLv, cal.seasonId) : null;
+    const lines = preview && preview.lines
+      ? preview.lines.map((l) => `<li>${l}</li>`).join("")
+      : "";
+    const progress = b.maxed ? "Высший разряд" : `${b.into} / ${b.need} опыта до ${nextLv}-го разряда`;
+    box.innerHTML = `
+      <h3>Разряд ${b.level}</h3>
+      <p class="meta">${progress}</p>
+      ${preview ? `<p class="gramota-sub">За ${nextLv}-й разряд:</p><ul class="gramota-list" data-testid="xp-next-rewards">${lines}</ul>` : "<p>Все разряды уже получены.</p>"}
+      <div class="sheet-actions">
+        <button type="button" class="btn primary" data-close-xp-preview data-testid="xp-preview-close">Понятно</button>
+      </div>`;
+    root.classList.remove("hidden");
+  }
+
+  function addXp(amount, { celebrate } = { celebrate: true }) {
+    const n = Number(amount) || 0;
+    if (!n) return [];
+    if (typeof state.claimedLevel !== "number") state.claimedLevel = levelFromXp(state.xp);
+    state.xp += n;
+    const next = levelFromXp(state.xp);
+    const start = Math.max(state.claimedLevel, 1);
+    if (next <= start) return [];
+    const granted = [];
+    const seasonId = calendarAt().seasonId;
+    for (let lv = start + 1; lv <= next; lv += 1) {
+      const g = applyLevelReward(lv, seasonId);
+      if (g) granted.push(g);
+      state.claimedLevel = lv;
+    }
+    if (celebrate && granted.length) showGramota(granted[granted.length - 1]);
+    return granted;
+  }
+
+  function applyFertilizer(plotId) {
+    sync();
+    const plot = findPlot(plotId);
+    if (!plot || !plot.cropId || plot.withered) return;
+    if (plot.fertilized) { toast("Удобрение уже внесено"); return; }
+    if ((state.warehouse.fertilizer || 0) < 1) { toast("Нет удобрения"); return; }
+    const crop = CROPS[plot.cropId];
+    if (!crop || plot.grownMs >= crop.growMs) return;
+    state.warehouse.fertilizer -= 1;
+    plot.fertilized = true;
+    const remain = crop.growMs - plot.grownMs;
+    const boost = (D.FERTILIZER_BOOST != null ? D.FERTILIZER_BOOST : 0.5);
+    plot.grownMs += remain * boost;
+    save(); haptic("medium"); closeSheet();
+    toast("Внесли удобрение");
+    renderAll();
+  }
+
   function onLevelUp(level) {
-    openSheet(`<div class="levelup">
-      <div class="big">Разряд ${level}!</div>
-      <p>Открываются новые семена, цветы или животные в сельпо и на ярмарке.</p>
-      <div class="sheet-actions"><button type="button" class="btn primary" data-close-sheet>Продолжить</button></div>
-    </div>`);
+    const g = { level, lines: ["Открываются новые семена, цветы или животные в сельпо и на ярмарке."] };
+    showGramota(g);
   }
 
   function onTap(e) {
-    const t = e.target.closest("[data-nav], [data-plot], [data-buy], [data-sell], [data-plant], [data-harvest], [data-unlock], [data-goto], [data-close-sheet], [data-clear], [data-water], [data-buy-feed], [data-craft], [data-buy-pen], [data-buy-animal], [data-feed], [data-collect], [data-sell-animal], [data-buy-upgrade], [data-farmer], #btn-sell-all");
+    const t = e.target.closest("[data-nav], [data-plot], [data-buy], [data-sell], [data-plant], [data-harvest], [data-unlock], [data-goto], [data-close-sheet], [data-clear], [data-water], [data-buy-feed], [data-craft], [data-buy-pen], [data-buy-animal], [data-feed], [data-collect], [data-sell-animal], [data-buy-upgrade], [data-farmer], [data-xp-preview], [data-close-gramota], [data-close-xp-preview], [data-fertilize], #btn-sell-all");
     if (!t) return;
+    if (t.hasAttribute("data-close-gramota")) { closeGramota(); return; }
+    if (t.hasAttribute("data-close-xp-preview")) { closeXpPreview(); return; }
+    if (t.hasAttribute("data-xp-preview")) { showXpPreview(); return; }
     if (t.dataset.nav) { showView(t.dataset.nav); return; }
     if (t.hasAttribute("data-close-sheet")) { closeSheet(); return; }
     if (t.dataset.goto) { closeSheet(); showView(t.dataset.goto); return; }
@@ -1472,6 +1839,7 @@
     if (t.dataset.collect) { collectAnimal(t.dataset.collect); return; }
     if (t.dataset.sellAnimal) { sellAnimal(t.dataset.sellAnimal); return; }
     if (t.dataset.buyUpgrade) { buyUpgrade(t.dataset.buyUpgrade); return; }
+    if (t.dataset.fertilize !== undefined) { applyFertilizer(t.dataset.fertilize); return; }
     if (t.hasAttribute("data-farmer")) { talkToFarmer(); }
   }
 
@@ -1507,6 +1875,8 @@
       state = defaultState();
       save();
       closeSheet();
+      closeGramota();
+      closeXpPreview();
       renderAll();
     },
     advanceMs(ms) {
@@ -1557,9 +1927,10 @@
       sync();
       renderAll();
     },
-    give({ coins, feed, xp, seeds, products, upgrades } = {}) {
+    give({ coins, feed, fertilizer, xp, seeds, products, upgrades } = {}) {
       if (coins) state.coins += coins;
       if (feed) state.warehouse.feed = (state.warehouse.feed || 0) + feed;
+      if (fertilizer) state.warehouse.fertilizer = (state.warehouse.fertilizer || 0) + fertilizer;
       if (xp) state.xp += xp;
       if (seeds) for (const [k, v] of Object.entries(seeds)) state.seeds[k] = (state.seeds[k] || 0) + v;
       if (products) for (const [k, v] of Object.entries(products)) state.warehouse[k] = (state.warehouse[k] || 0) + v;
@@ -1567,6 +1938,14 @@
       save();
       renderAll();
     },
+    grantXp(n) { const g = addXp(n, { celebrate: true }); save(); renderAll(); return g; },
+    applyFertilizer,
+    rewardPreview: (level, season) => rewardPreview(level, season || calendarAt().seasonId),
+    levelRewards: LEVEL_REWARDS,
+    isFast: () => !!D.TIMING.fast,
+    timing: () => ({ DAY_MS, DAYS_PER_SEASON, fast: !!D.TIMING.fast }),
+    suspendSave() { persistEnabled = false; },
+    resumeSave() { persistEnabled = true; },
     buyUpgrade,
     storageCap,
     warehouseUsed,

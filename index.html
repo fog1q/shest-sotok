@@ -8,7 +8,7 @@
   <meta name="theme-color" content="#8b1e18" />
   <title>Шесть соток</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=20261114a" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%238B1E18'/%3E%3Crect x='6' y='6' width='52' height='52' rx='4' fill='none' stroke='%23D4B03A' stroke-width='3'/%3E%3Cpath d='M32 16 L44 32 L32 48 L20 32 Z' fill='%234F5530'/%3E%3Ccircle cx='32' cy='32' r='5' fill='%23D4B03A'/%3E%3C/svg%3E" />
 </head>
 <body>
@@ -60,7 +60,7 @@
           <span>Разряд <b id="stat-level" data-testid="level">1</b></span>
           <span class="xp-label" id="stat-xp">0 / 30</span>
         </div>
-        <div class="xp-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div class="xp-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" data-xp-preview data-testid="xp-bar">
           <div class="xp-fill" id="xp-fill"></div>
         </div>
       </div>
@@ -84,7 +84,7 @@
                 <span class="value" id="home-coins-value">0</span>
                 <span class="rub-label">руб.</span>
               </div>
-              <div class="home-level">
+              <div class="home-level" data-xp-preview data-testid="home-xp-bar">
                 <span>Разряд <b id="home-level">1</b></span>
                 <span class="xp-label" id="home-xp">0 / 30</span>
                 <div class="xp-bar"><div class="xp-fill" id="home-xp-fill"></div></div>
@@ -164,7 +164,7 @@
 
       <section id="view-barn" class="view hidden" data-view="barn">
         <h2>Сарай</h2>
-        <p class="hint">Урожай, цветы и продукты двора можно сдать за рубли</p>
+        <p class="hint">Семена для посадки, удобрение, урожай и продукты двора. Семена из мешочка сажаются бесплатно.</p>
         <div class="cards" id="barn-list" data-testid="barn-list"></div>
         <button type="button" class="btn primary hidden" id="btn-sell-all" data-testid="sell-all">Сдать всё</button>
       </section>
@@ -202,10 +202,24 @@
     </div>
   </div>
 
+  <div id="gramota" class="gramota hidden" data-testid="gramota" role="dialog" aria-modal="true" aria-labelledby="gramota-title">
+    <button type="button" class="gramota-backdrop" data-close-gramota aria-label="Закрыть"></button>
+    <div class="gramota-sheet" data-testid="gramota-sheet">
+      <div id="gramota-content"></div>
+    </div>
+  </div>
+
+  <div id="xp-preview" class="xp-preview hidden" data-testid="xp-preview" role="dialog" aria-modal="true">
+    <button type="button" class="xp-preview-backdrop" data-close-xp-preview aria-label="Закрыть"></button>
+    <div class="xp-preview-card" data-testid="xp-preview-card">
+      <div id="xp-preview-content"></div>
+    </div>
+  </div>
+
   <div id="toasts" class="toasts" aria-live="polite"></div>
 
-  <script src="data.js"></script>
-  <script src="home.js"></script>
-  <script src="game.js"></script>
+  <script src="data.js?v=20261114a"></script>
+  <script src="home.js?v=20261114a"></script>
+  <script src="game.js?v=20261114a"></script>
 </body>
 </html>

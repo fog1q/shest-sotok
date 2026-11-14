@@ -1,7 +1,8 @@
 (() => {
   "use strict";
 
-  const A = (path) => `assets/${path}.webp`;
+  const VER = (window.SOTOK_DATA && window.SOTOK_DATA.ASSET_VER) || "20261114a";
+  const A = (path) => `assets/${path}.webp?v=${VER}`;
   const TRANSPORT = ["bike", "moped", "sedan"];
 
   // Horizon: % from the top of #home-art where the far edge of the yard
@@ -38,7 +39,7 @@
     pens:       { depth: "mid",   left: 54, width: 28, z: 6 },
     fence:      { depth: "front", left: 10, width: 56, height: 11, z: 7 },
     bench:      { depth: "front", left: 24, width: 20, z: 8, y: 1 },
-    transport:  { depth: "front", left: 0,  width: [32, 34, 36], z: 8, y: 6 },
+    transport:  { depth: "front", left: 0,  width: [46, 40, 44], z: 8, y: 6 },
     farmer:     { depth: "front", right: 0, width: 30, z: 9, y: 8 },
     // Standalone birdhouse on a pole, used only when the apple tree is absent.
     birdpole:   { depth: "back",  left: 42, width: 7, z: 4, y: 1 },
@@ -159,6 +160,7 @@
       : "";
 
     return `<div class="home-layers" data-testid="home-svg" data-horizon="${HORIZON[season] ?? HORIZON.summer}">
+      <div class="home-stage" data-testid="home-stage">
       <img class="layer bg" src="${A("bg/" + season)}" alt="" draggable="false">
       ${prop(`house house-${houseLv}`, A("buildings/house-" + houseLv), placeStyle(LAYOUT.house, season, houseLv), "", { inner: antenna })}
       ${prop(`sarai sarai-${saraiLv}`, A("buildings/sarai-" + saraiLv), placeStyle(LAYOUT.sarai, season, saraiLv))}
@@ -173,6 +175,7 @@
       ${upgrades.bench ? prop("bench", A("decor/bench"), placeStyle(LAYOUT.bench, season)) : ""}
       ${prop(`transport transport-${transLv}`, A("transport/" + TRANSPORT[transLv]), placeStyle(LAYOUT.transport, season, transLv))}
       ${prop("farmer", A("farmer/" + season), placeStyle(LAYOUT.farmer, season), 'data-testid="farmer-art"')}
+      </div>
     </div>`;
   }
 

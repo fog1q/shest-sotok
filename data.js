@@ -2,9 +2,47 @@
 window.SOTOK_DATA = (() => {
   "use strict";
 
+  const ASSET_VER = "20261114a";
+
   const TIMING = {
-    DAY_MS: 15_000,
+    // Live play: one season lasts this many real-world days (12 in-game days).
+    SEASON_REAL_DAYS: 3,
     DAYS_PER_SEASON: 12,
+    FAST_DAY_MS: 15_000,
+    // Pre-v4 saves used 15-second days; used only to rebase the calendar.
+    LEGACY_DAY_MS: 15_000,
+    DAY_MS: 15_000,
+    fast: false,
+  };
+
+  const PLAY_CROP_GROW_MS = {
+    radish: 8 * 60_000,
+    dill: 10 * 60_000,
+    peas: 20 * 60_000,
+    garlic: 30 * 60_000,
+    tulip: 18 * 60_000,
+    narcissus: 22 * 60_000,
+    cucumber: 25 * 60_000,
+    tomato: 45 * 60_000,
+    zucchini: 40 * 60_000,
+    strawberry: 70 * 60_000,
+    cornflower: 25 * 60_000,
+    peony: 90 * 60_000,
+    potato: 80 * 60_000,
+    cabbage: 100 * 60_000,
+    pumpkin: 3 * 60 * 60_000,
+    aster: 40 * 60_000,
+    gladiolus: 50 * 60_000,
+    chrysanthemum: 55 * 60_000,
+  };
+
+  const PLAY_ANIMAL_TIMES = {
+    chicken: { growMs: 40 * 60_000, feedEveryMs: 3 * 60 * 60_000, productTime: 2 * 60 * 60_000 },
+    rabbit:  { growMs: 50 * 60_000, feedEveryMs: 4 * 60 * 60_000, productTime: 3 * 60 * 60_000 },
+    goat:    { growMs: 70 * 60_000, feedEveryMs: 5 * 60 * 60_000, productTime: 4 * 60 * 60_000 },
+    pig:     { growMs: 90 * 60_000, feedEveryMs: 5 * 60 * 60_000, productTime: 0 },
+    sheep:   { growMs: 80 * 60_000, feedEveryMs: 5 * 60 * 60_000, productTime: 6 * 60 * 60_000 },
+    cow:     { growMs: 2 * 60 * 60_000, feedEveryMs: 6 * 60 * 60_000, productTime: 6 * 60 * 60_000 },
   };
 
   const SEASONS = ["spring", "summer", "autumn", "winter"];
@@ -90,6 +128,7 @@ window.SOTOK_DATA = (() => {
     milk: { id: "milk", name: "Молоко", sellPrice: 12 },
     wool: { id: "wool", name: "Шерсть", sellPrice: 18 },
     feed: { id: "feed", name: "Комбикорм", sellPrice: 4 },
+    fertilizer: { id: "fertilizer", name: "Удобрение", sellPrice: 0 },
   };
 
   const FEED_BUY_PRICE = 8;
@@ -200,6 +239,28 @@ window.SOTOK_DATA = (() => {
   const XP_TABLE = [0, 30, 80, 160, 280, 450, 680, 1000, 1400];
   const WINTER_FEED_FACTOR = 0.65;
   const GH_WINTER_GROWTH = 0.85;
+  // Fraction of remaining grow time filled by one bag of «удобрение».
+  const FERTILIZER_BOOST = 0.5;
+
+  /* Награды за новый разряд. seedPacks — бесплатные пакетики семян текущего сезона
+     (включая только что открытые культуры). decor — подарок-улучшение. */
+  const LEVEL_REWARDS = {
+    2: { coins: 40, seedPacks: 2, feed: 2 },
+    3: { coins: 70, seedPacks: 3, feed: 3, fertilizer: 1 },
+    4: { coins: 110, seedPacks: 3, feed: 4, fertilizer: 1 },
+    5: { coins: 160, seedPacks: 4, feed: 5, fertilizer: 2, freePlot: true },
+    6: { coins: 220, seedPacks: 4, feed: 6, fertilizer: 2, decor: "birdhouse" },
+    7: { coins: 280, seedPacks: 5, feed: 8, fertilizer: 3, freePen: true },
+    8: { coins: 360, seedPacks: 5, feed: 8, fertilizer: 3, decor: "bench" },
+    9: { coins: 500, seedPacks: 6, feed: 10, fertilizer: 4, decor: "antenna", freePlot: true },
+  };
+
+  const DECOR_NAME = {
+    birdhouse: "Скворечник",
+    bench: "Скамейка",
+    antenna: "Антенна",
+    apple: "Яблоня",
+  };
 
   /* Улучшения участка: level-цепочки (0 — старт) и отдельные постройки. */
   const UPGRADES = {
@@ -320,6 +381,57 @@ window.SOTOK_DATA = (() => {
     ],
   };
 
+  function isFastMode() {
+    try {
+      const loc = (typeof location !== "undefined" && location)
+        || (typeof window !== "undefined" && window.location);
+      if (!loc || loc.search == null) return false;
+      const q = String(loc.search);
+      if (/(?:^|[?&])fast=1(?:&|$)/.test(q)) return true;
+      if (/(?:^|[?&])fast=0(?:&|$)/.test(q)) return false;
+    } catch { /* not in a browser */ }
+    return false;
+  }
+
+  function snapshotFastTimes() {
+    for (const id of CROP_ORDER) {
+      if (CROPS[id].growMsFast == null) CROPS[id].growMsFast = CROPS[id].growMs;
+    }
+    for (const id of ANIMAL_ORDER) {
+      const a = ANIMALS[id];
+      if (a.growMsFast == null) {
+        a.growMsFast = a.growMs;
+        a.feedEveryMsFast = a.feedEveryMs;
+        a.productTimeFast = a.productTime;
+      }
+    }
+  }
+
+  function applyTiming(fast) {
+    snapshotFastTimes();
+    const days = TIMING.DAYS_PER_SEASON;
+    TIMING.fast = !!fast;
+    TIMING.DAY_MS = fast
+      ? TIMING.FAST_DAY_MS
+      : Math.floor(TIMING.SEASON_REAL_DAYS * 24 * 60 * 60 * 1000 / days);
+    for (const id of CROP_ORDER) {
+      CROPS[id].growMs = fast
+        ? CROPS[id].growMsFast
+        : (PLAY_CROP_GROW_MS[id] || CROPS[id].growMsFast);
+    }
+    for (const id of ANIMAL_ORDER) {
+      const a = ANIMALS[id];
+      const play = PLAY_ANIMAL_TIMES[id] || {};
+      a.growMs = fast ? a.growMsFast : (play.growMs || a.growMsFast);
+      a.feedEveryMs = fast ? a.feedEveryMsFast : (play.feedEveryMs || a.feedEveryMsFast);
+      a.productTime = fast ? a.productTimeFast : (play.productTime != null ? play.productTime : a.productTimeFast);
+    }
+    return { DAY_MS: TIMING.DAY_MS, DAYS_PER_SEASON: days, fast: TIMING.fast };
+  }
+
+  // Apply as soon as the script loads so game.js sees the right growMs.
+  applyTiming(isFastMode());
+
   function defaultUpgrades() {
     return {
       house: 0,
@@ -336,10 +448,12 @@ window.SOTOK_DATA = (() => {
   }
 
   return {
-    TIMING, SEASONS, SEASON_NAME, SEASON_PREP, SEASON_TO, WEATHER_TABLE,
+    ASSET_VER, TIMING, SEASONS, SEASON_NAME, SEASON_PREP, SEASON_TO, WEATHER_TABLE,
     CROPS, CROP_ORDER, PRODUCTS, FEED_BUY_PRICE, FEED_RECIPES,
     ANIMALS, ANIMAL_ORDER, PLOT_PRICE, START_UNLOCKED, GREENHOUSE_PRICE,
     PEN_PRICE, MAX_PENS, START_PENS, XP_TABLE, WINTER_FEED_FACTOR, GH_WINTER_GROWTH,
+    FERTILIZER_BOOST, LEVEL_REWARDS, DECOR_NAME, PLAY_CROP_GROW_MS, PLAY_ANIMAL_TIMES,
     UPGRADES, UPGRADE_ORDER, FARMER_TIPS, defaultUpgrades,
+    isFastMode, applyTiming,
   };
 })();
