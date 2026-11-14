@@ -2,7 +2,7 @@
 window.SOTOK_DATA = (() => {
   "use strict";
 
-  const ASSET_VER = "20261114b";
+  const ASSET_VER = "20261114c";
 
   /* One-time owner gift: only the SHA-256 of the secret code is stored here. */
   const GIFT = {
@@ -12,17 +12,19 @@ window.SOTOK_DATA = (() => {
   };
 
   const TIMING = {
-    // Live play: one season lasts this many real-world days (12 in-game days).
-    SEASON_REAL_DAYS: 3,
+    // Live play: one season lasts this many real-world hours (12 in-game days).
+    SEASON_REAL_HOURS: 2,
     DAYS_PER_SEASON: 12,
     FAST_DAY_MS: 15_000,
     // Pre-v4 saves used 15-second days; used only to rebase the calendar.
     LEGACY_DAY_MS: 15_000,
+    // v4 play used 6-hour days (3 real days per season).
+    LEGACY_V4_PLAY_DAY_MS: 6 * 60 * 60 * 1000,
     DAY_MS: 15_000,
     fast: false,
   };
 
-  const PLAY_CROP_GROW_MS = {
+  const LEGACY_V4_PLAY_CROP_GROW_MS = {
     radish: 8 * 60_000,
     dill: 10 * 60_000,
     peas: 20 * 60_000,
@@ -43,13 +45,45 @@ window.SOTOK_DATA = (() => {
     chrysanthemum: 55 * 60_000,
   };
 
-  const PLAY_ANIMAL_TIMES = {
+  // v5 play: first crops ~30s, the long pumpkin ~30 min.
+  const PLAY_CROP_GROW_MS = {
+    radish: 30_000,
+    dill: 40_000,
+    peas: 70_000,
+    garlic: 90_000,
+    tulip: 60_000,
+    narcissus: 75_000,
+    cucumber: 2 * 60_000,
+    tomato: 3 * 60_000,
+    zucchini: 150_000,
+    strawberry: 4 * 60_000,
+    cornflower: 2 * 60_000,
+    peony: 5 * 60_000,
+    potato: 5 * 60_000,
+    cabbage: 6 * 60_000,
+    pumpkin: 30 * 60_000,
+    aster: 3 * 60_000,
+    gladiolus: 4 * 60_000,
+    chrysanthemum: 5 * 60_000,
+  };
+
+  const LEGACY_V4_PLAY_ANIMAL_TIMES = {
     chicken: { growMs: 40 * 60_000, feedEveryMs: 3 * 60 * 60_000, productTime: 2 * 60 * 60_000 },
     rabbit:  { growMs: 50 * 60_000, feedEveryMs: 4 * 60 * 60_000, productTime: 3 * 60 * 60_000 },
     goat:    { growMs: 70 * 60_000, feedEveryMs: 5 * 60 * 60_000, productTime: 4 * 60 * 60_000 },
     pig:     { growMs: 90 * 60_000, feedEveryMs: 5 * 60 * 60_000, productTime: 0 },
     sheep:   { growMs: 80 * 60_000, feedEveryMs: 5 * 60 * 60_000, productTime: 6 * 60 * 60_000 },
     cow:     { growMs: 2 * 60 * 60_000, feedEveryMs: 6 * 60 * 60_000, productTime: 6 * 60 * 60_000 },
+  };
+
+  // v5 play: products in 1–10 minutes, feed and growth stay proportional.
+  const PLAY_ANIMAL_TIMES = {
+    chicken: { growMs: 2 * 60_000, feedEveryMs: 8 * 60_000, productTime: 1 * 60_000 },
+    rabbit:  { growMs: 3 * 60_000, feedEveryMs: 10 * 60_000, productTime: 3 * 60_000 },
+    goat:    { growMs: 5 * 60_000, feedEveryMs: 12 * 60_000, productTime: 6 * 60_000 },
+    pig:     { growMs: 6 * 60_000, feedEveryMs: 12 * 60_000, productTime: 0 },
+    sheep:   { growMs: 5 * 60_000, feedEveryMs: 12 * 60_000, productTime: 8 * 60_000 },
+    cow:     { growMs: 8 * 60_000, feedEveryMs: 15 * 60_000, productTime: 10 * 60_000 },
   };
 
   const SEASONS = ["spring", "summer", "autumn", "winter"];
@@ -136,7 +170,117 @@ window.SOTOK_DATA = (() => {
     wool: { id: "wool", name: "Шерсть", sellPrice: 18 },
     feed: { id: "feed", name: "Комбикорм", sellPrice: 4 },
     fertilizer: { id: "fertilizer", name: "Удобрение", sellPrice: 0 },
+    dust: { id: "dust", name: "Дуст", sellPrice: 0, buyPrice: 12, tool: true },
+    ash: { id: "ash", name: "Зола", sellPrice: 0, buyPrice: 8, tool: true },
+    jam: { id: "jam", name: "Варенье", sellPrice: 90, craft: true },
+    smetana: { id: "smetana", name: "Сметана", sellPrice: 40, craft: true },
+    tvorog: { id: "tvorog", name: "Творог", sellPrice: 55, craft: true },
+    pickles: { id: "pickles", name: "Соленья", sellPrice: 78, craft: true },
+    sauerkraut: { id: "sauerkraut", name: "Квашеная капуста", sellPrice: 72, craft: true },
+    socks: { id: "socks", name: "Шерстяные носки", sellPrice: 60, craft: true },
   };
+
+  const TOOL_IDS = ["fertilizer", "dust", "ash"];
+  const CRAFT_IDS = ["jam", "smetana", "tvorog", "pickles", "sauerkraut", "socks"];
+
+  const WATER_BONUS = 1.25;
+  const WEED_PENALTY = 0.7;
+  const PEST_YIELD = 0.5;
+
+  const CARE = {
+    thirstAfterMs: 90_000,
+    thirstAfterMsFast: 4_000,
+    waterLastsMs: 180_000,
+    waterLastsMsFast: 10_000,
+    weedAfterMs: 100_000,
+    weedAfterMsFast: 5_000,
+    pestAfterMs: 140_000,
+    pestAfterMsFast: 6_000,
+  };
+
+  const PESTS = {
+    beetle: { id: "beetle", name: "Колорадский жук", icon: "pests/beetle", remedy: "dust" },
+    aphid: { id: "aphid", name: "Тля", icon: "pests/aphid", remedy: "ash" },
+    slug: { id: "slug", name: "Слизень", icon: "pests/slug", remedy: "ash" },
+  };
+  const PEST_ORDER = ["beetle", "aphid", "slug"];
+
+  const STATIONS = {
+    stove: { id: "stove", name: "Плита", upgrade: "kitchen", icon: "buildings/stove" },
+    barrel: { id: "barrel", name: "Бочка", upgrade: "cellar", icon: "buildings/barrel" },
+    separator: { id: "separator", name: "Сепаратор", upgrade: "separator", icon: "buildings/separator" },
+    spinner: { id: "spinner", name: "Прялка", upgrade: "spinner", icon: "buildings/spinner" },
+  };
+
+  const RECIPES = {
+    jam: { id: "jam", name: "Варенье", station: "stove", inputs: { strawberry: 2 }, timeMs: 40_000, timeMsFast: 6_000, output: "jam", outputCount: 1, xp: 8, unlockLevel: 2 },
+    smetana: { id: "smetana", name: "Сметана", station: "separator", inputs: { milk: 2 }, timeMs: 50_000, timeMsFast: 7_000, output: "smetana", outputCount: 1, xp: 6, unlockLevel: 3 },
+    tvorog: { id: "tvorog", name: "Творог", station: "separator", inputs: { milk: 3 }, timeMs: 70_000, timeMsFast: 8_000, output: "tvorog", outputCount: 1, xp: 8, unlockLevel: 3 },
+    pickles: { id: "pickles", name: "Соленья", station: "barrel", inputs: { cucumber: 3 }, timeMs: 80_000, timeMsFast: 8_000, output: "pickles", outputCount: 1, xp: 8, unlockLevel: 2 },
+    sauerkraut: { id: "sauerkraut", name: "Квашеная капуста", station: "barrel", inputs: { cabbage: 2 }, timeMs: 80_000, timeMsFast: 8_000, output: "sauerkraut", outputCount: 1, xp: 8, unlockLevel: 2 },
+    socks: { id: "socks", name: "Носки", station: "spinner", inputs: { wool: 2 }, timeMs: 90_000, timeMsFast: 8_000, output: "socks", outputCount: 1, xp: 10, unlockLevel: 4 },
+  };
+  const RECIPE_ORDER = ["jam", "smetana", "tvorog", "pickles", "sauerkraut", "socks"];
+
+  const QUEST_TEMPLATES = [
+    { type: "harvest", crop: "radish", count: 2, coins: 16, xp: 6, title: "Редис к столу", text: "Соберите 2 редиса" },
+    { type: "harvest", crop: "dill", count: 2, coins: 18, xp: 6, title: "Укроп на суп", text: "Соберите 2 пучка укропа" },
+    { type: "harvest", crop: "cucumber", count: 2, coins: 24, xp: 8, title: "Огурцы председателю", text: "Соберите 2 огурца" },
+    { type: "harvest", crop: "potato", count: 3, coins: 28, xp: 10, title: "Картошка в закрома", text: "Соберите 3 картошки" },
+    { type: "harvest", crop: "strawberry", count: 2, coins: 32, xp: 10, title: "Ягоды к чаю", text: "Соберите 2 клубники" },
+    { type: "collect", item: "egg", count: 3, coins: 20, xp: 8, title: "Яиц в лукошко", text: "Соберите 3 яйца" },
+    { type: "collect", item: "milk", count: 2, coins: 24, xp: 8, title: "Молоко с двора", text: "Соберите 2 молока" },
+    { type: "collect", item: "wool", count: 1, coins: 22, xp: 8, title: "Шерсть на носки", text: "Соберите шерсть" },
+    { type: "sell", item: "radish", count: 2, coins: 14, xp: 5, title: "Сдать редис в сельпо", text: "Продайте 2 редиса" },
+    { type: "sell", item: "egg", count: 2, coins: 16, xp: 5, title: "Яйца в сельпо", text: "Продайте 2 яйца" },
+    { type: "craft", recipe: "jam", count: 1, coins: 36, xp: 12, title: "Банка варенья", text: "Сварите варенье" },
+    { type: "craft", recipe: "pickles", count: 1, coins: 32, xp: 10, title: "Бочка солений", text: "Засолите огурцы" },
+    { type: "water", count: 3, coins: 12, xp: 5, title: "Полить грядки", text: "Полейте 3 грядки" },
+    { type: "weed", count: 2, coins: 14, xp: 6, title: "Прополоть", text: "Выдерните сорняки на 2 грядках" },
+    { type: "pest", count: 1, coins: 16, xp: 6, title: "Прогнать вредителей", text: "Избавьтесь от вредителей на грядке" },
+  ];
+
+  const TUTORIAL = [
+    { id: "plant-radish", type: "plant", crop: "radish", count: 1, coins: 0, xp: 2, title: "Первая посадка", text: "Посадите редис на грядке" },
+    { id: "harvest-radish", type: "harvest", crop: "radish", count: 1, coins: 0, xp: 2, title: "Первый сбор", text: "Соберите поспевший редис" },
+    { id: "sell-radish", type: "sell", item: "radish", count: 1, coins: 8, xp: 2, title: "В сельпо", text: "Продайте редис в сельпо" },
+    { id: "water-once", type: "water", count: 1, coins: 6, xp: 2, title: "Лейка в руки", text: "Полейте любую грядку" },
+  ];
+
+  const QUEST_REFRESH_MS = 20 * 60_000;
+  const QUEST_REFRESH_MS_FAST = 25_000;
+  const MAX_ACTIVE_QUESTS = 3;
+
+  const NEIGHBORS = {
+    nyura: { id: "nyura", name: "Баба Нюра", portrait: "npc/nyura", wants: ["jam", "strawberry", "tulip", "peony", "narcissus"] },
+    kolya: { id: "kolya", name: "Дядя Коля", portrait: "npc/kolya", wants: ["potato", "pickles", "milk", "egg", "cabbage"] },
+    tanka: { id: "tanka", name: "Танька из сельпо", portrait: "npc/tanka", wants: ["tulip", "aster", "egg", "smetana", "cornflower"] },
+  };
+  const NEIGHBOR_ORDER = ["nyura", "kolya", "tanka"];
+  const ORDER_TTL_MS = 15 * 60_000;
+  const ORDER_TTL_MS_FAST = 20_000;
+  const ORDER_GAP_MS = 8 * 60_000;
+  const ORDER_GAP_MS_FAST = 12_000;
+  const MAX_ORDERS = 2;
+
+  const DAILY_BONUS = [
+    { day: 1, coins: 20 },
+    { day: 2, coins: 30 },
+    { day: 3, coins: 45, items: { feed: 1 } },
+    { day: 4, coins: 60 },
+    { day: 5, coins: 80, items: { ash: 1 } },
+    { day: 6, coins: 120, items: { dust: 1 } },
+    { day: 7, coins: 300, items: { fertilizer: 1, feed: 2 } },
+  ];
+
+  const FAIR = {
+    minMult: 0.8,
+    maxMult: 2.0,
+    specialChance: 0.12,
+    specialMult: 2.2,
+  };
+
+  const PROCESS_QUEUE = 2;
 
   const FEED_BUY_PRICE = 8;
   const FEED_RECIPES = [
@@ -362,11 +506,48 @@ window.SOTOK_DATA = (() => {
       unlockLevel: 1,
       flavor: "Для скворцов на яблоне или у дома.",
     },
+    kitchen: {
+      id: "kitchen",
+      name: "Летняя кухня",
+      type: "toggle",
+      price: 100,
+      unlockLevel: 2,
+      bonus: { station: "stove" },
+      flavor: "Плита для варенья на летней кухне.",
+    },
+    cellar: {
+      id: "cellar",
+      name: "Погреб",
+      type: "toggle",
+      price: 90,
+      unlockLevel: 2,
+      bonus: { station: "barrel" },
+      flavor: "Бочка для солений и капусты.",
+    },
+    separator: {
+      id: "separator",
+      name: "Сепаратор",
+      type: "toggle",
+      price: 140,
+      unlockLevel: 3,
+      bonus: { station: "separator" },
+      flavor: "Из молока — сметана и творог.",
+    },
+    spinner: {
+      id: "spinner",
+      name: "Прялка",
+      type: "toggle",
+      price: 160,
+      unlockLevel: 4,
+      bonus: { station: "spinner" },
+      flavor: "Из шерсти вяжутся носки.",
+    },
   };
 
   const UPGRADE_ORDER = [
     "house", "fence", "transport", "sarai",
     "well", "bathhouse", "apple", "bench", "antenna", "birdhouse",
+    "kitchen", "cellar", "separator", "spinner",
   ];
 
   const FARMER_TIPS = {
@@ -420,7 +601,7 @@ window.SOTOK_DATA = (() => {
     TIMING.fast = !!fast;
     TIMING.DAY_MS = fast
       ? TIMING.FAST_DAY_MS
-      : Math.floor(TIMING.SEASON_REAL_DAYS * 24 * 60 * 60 * 1000 / days);
+      : Math.floor(TIMING.SEASON_REAL_HOURS * 60 * 60 * 1000 / days);
     for (const id of CROP_ORDER) {
       CROPS[id].growMs = fast
         ? CROPS[id].growMsFast
@@ -451,15 +632,25 @@ window.SOTOK_DATA = (() => {
       bench: false,
       antenna: false,
       birdhouse: false,
+      kitchen: false,
+      cellar: false,
+      separator: false,
+      spinner: false,
     };
   }
 
   return {
     ASSET_VER, TIMING, SEASONS, SEASON_NAME, SEASON_PREP, SEASON_TO, WEATHER_TABLE,
-    CROPS, CROP_ORDER, PRODUCTS, FEED_BUY_PRICE, FEED_RECIPES,
+    CROPS, CROP_ORDER, PRODUCTS, FEED_BUY_PRICE, FEED_RECIPES, TOOL_IDS, CRAFT_IDS,
     ANIMALS, ANIMAL_ORDER, PLOT_PRICE, START_UNLOCKED, GREENHOUSE_PRICE,
     PEN_PRICE, MAX_PENS, START_PENS, XP_TABLE, WINTER_FEED_FACTOR, GH_WINTER_GROWTH,
-    FERTILIZER_BOOST, LEVEL_REWARDS, DECOR_NAME, PLAY_CROP_GROW_MS, PLAY_ANIMAL_TIMES,
+    FERTILIZER_BOOST, WATER_BONUS, WEED_PENALTY, PEST_YIELD, CARE, PESTS, PEST_ORDER,
+    LEVEL_REWARDS, DECOR_NAME, PLAY_CROP_GROW_MS, PLAY_ANIMAL_TIMES,
+    LEGACY_V4_PLAY_CROP_GROW_MS, LEGACY_V4_PLAY_ANIMAL_TIMES,
+    STATIONS, RECIPES, RECIPE_ORDER, QUEST_TEMPLATES, TUTORIAL,
+    QUEST_REFRESH_MS, QUEST_REFRESH_MS_FAST, MAX_ACTIVE_QUESTS,
+    NEIGHBORS, NEIGHBOR_ORDER, ORDER_TTL_MS, ORDER_TTL_MS_FAST, ORDER_GAP_MS, ORDER_GAP_MS_FAST, MAX_ORDERS,
+    DAILY_BONUS, FAIR, PROCESS_QUEUE,
     UPGRADES, UPGRADE_ORDER, FARMER_TIPS, defaultUpgrades,
     isFastMode, applyTiming, GIFT,
   };

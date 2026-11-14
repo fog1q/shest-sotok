@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VER = (window.SOTOK_DATA && window.SOTOK_DATA.ASSET_VER) || "20261114b";
+  const VER = (window.SOTOK_DATA && window.SOTOK_DATA.ASSET_VER) || "20261114c";
   const A = (path) => `assets/${path}.webp?v=${VER}`;
   const TRANSPORT = ["bike", "moped", "sedan"];
 
@@ -43,6 +43,10 @@
     farmer:     { depth: "front", right: 0, width: 30, z: 9, y: 8 },
     // Standalone birdhouse on a pole, used only when the apple tree is absent.
     birdpole:   { depth: "back",  left: 42, width: 7, z: 4, y: 1 },
+    kitchen:    { depth: "front", left: 2,  width: 18, z: 8, y: -3 },
+    cellar:     { depth: "front", left: 62, width: 16, z: 8, y: -5 },
+    separator:  { attach: "kitchen", width: 28, left: 72, bottom: 8 },
+    spinner:    { attach: "kitchen", width: 22, left: -6, bottom: 10 },
   };
 
   function pick(value, level) {
@@ -84,36 +88,56 @@
     const shadow = !opts || opts.shadow !== false;
     const inner = (opts && opts.inner) || "";
     const sh = shadow ? `<span class="ground-shadow" aria-hidden="true"></span>` : "";
+    const winter = opts && opts.winter;
+    const drift = winter && shadow ? `<span class="snow-drift" aria-hidden="true"></span>` : "";
+    const cap = winter && opts.snowCap ? `<span class="snow-cap" aria-hidden="true"></span>` : "";
     const art = src
       ? `<img class="prop-art" src="${src}" alt="" draggable="false"${extra ? ` ${extra}` : ""}>`
       : "";
-    return `<div class="prop layer ${cls}" style="${style}">${sh}${art}${inner}</div>`;
+    const clsW = winter ? `${cls} winter` : cls;
+    return `<div class="prop layer ${clsW}" style="${style}">${sh}${drift}${cap}${art}${inner}</div>`;
   }
 
   function appleSrc(season) {
     return A(`decor/apple-${season}`);
   }
 
+  function soilSrc(season) {
+    return season === "winter" ? A("stages/soil-winter") : A("stages/soil");
+  }
+
   function plotsLayer(plots, season) {
+    const soil = soilSrc(season);
     const cells = (plots || []).map((p, i) => {
-      let inner = `<img src="${A("stages/soil")}" alt="">`;
+      let inner = `<img src="${soil}" alt="">`;
       if (p.unlocked && p.cropId) {
         let src = A("stages/sprout");
         if (p.withered) src = A("stages/withered");
         else if (p.growReady) src = A(`crops/${p.cropId}`);
         else if (p.grownMs) src = A("stages/growing");
         if (p.growReady && !p.withered) {
-          inner = `<img class="bed" src="${A("stages/soil")}" alt=""><img class="ripe" src="${src}" alt="">`;
+          inner = `<img class="bed" src="${soil}" alt=""><img class="ripe" src="${src}" alt="">`;
         } else {
-          inner = `<img src="${src}" alt="">`;
+          inner = `<img class="bed" src="${soil}" alt=""><img src="${src}" alt="">`;
         }
       } else if (!p.unlocked) {
-        inner = `<img class="locked-bed" src="${A("stages/soil")}" alt="">`;
+        inner = `<img class="locked-bed" src="${soil}" alt="">`;
       }
-      return `<div class="mini-plot ${p.unlocked ? "open" : "shut"}" data-plot="${i}">${inner}</div>`;
+      const marks = [];
+      if (p.thirsty) marks.push("thirst");
+      if (p.weeds) marks.push("weeds");
+      if (p.pest) marks.push("pest");
+      if (p.growReady) marks.push("ripe");
+      const mark = marks.length ? `<span class="mini-care ${marks.join(" ")}"></span>` : "";
+      return `<div class="mini-plot ${p.unlocked ? "open" : "shut"} ${season === "winter" ? "winter" : ""}" data-plot="${i}">${inner}${mark}</div>`;
     }).join("");
     return prop("home-plots", null, placeStyle(LAYOUT.plots, season), "", {
-      inner: `<div class="plots-grid">${cells}</div>`,
+      winter: season === "winter",
+      inner: `<div class="plots-grid">${cells}</div>
+        <button type="button" class="hotspot" data-nav="farm" data-hotspot="plots" data-testid="hot-plots" aria-label="Участок">
+          <span class="hs-label">Участок</span>
+          <span class="hs-badge" data-badge="plots" hidden></span>
+        </button>`,
     });
   }
 
@@ -124,7 +148,12 @@
       return `<img class="home-animal ${a.kind} ${a.adult ? "adult" : "baby"}" src="${A("animals/" + file)}" alt="">`;
     }).join("");
     return prop("home-pens", null, placeStyle(LAYOUT.pens, season), "", {
-      inner: `<img class="pen-frame" src="${A("decor/pen")}" alt=""><div class="home-animals">${list}</div>`,
+      winter: season === "winter",
+      inner: `<img class="pen-frame" src="${A("decor/pen")}" alt=""><div class="home-animals">${list}</div>
+        <button type="button" class="hotspot" data-nav="yard" data-hotspot="pens" data-testid="hot-pens" aria-label="Двор">
+          <span class="hs-label">Двор</span>
+          <span class="hs-badge" data-badge="pens" hidden></span>
+        </button>`,
     });
   }
 
@@ -159,22 +188,49 @@
       )
       : "";
 
-    return `<div class="home-layers" data-testid="home-svg" data-horizon="${HORIZON[season] ?? HORIZON.summer}">
+    const W = { winter: season === "winter", snowCap: season === "winter" };
+    const kitchenInner = `
+      ${upgrades.separator ? `<img class="attach" src="${A("buildings/separator")}" alt="" style="${attachStyle(LAYOUT.separator)}">` : ""}
+      ${upgrades.spinner ? `<img class="attach" src="${A("buildings/spinner")}" alt="" style="${attachStyle(LAYOUT.spinner)}">` : ""}
+      <button type="button" class="hotspot" data-open-craft data-hotspot="craft" data-testid="hot-craft" aria-label="Переработка">
+        <span class="hs-label">Кухня</span>
+        <span class="hs-badge" data-badge="craft" hidden></span>
+      </button>`;
+    return `<div class="home-layers" data-testid="home-svg" data-horizon="${HORIZON[season] ?? HORIZON.summer}" data-season="${season}">
       <div class="home-stage" data-testid="home-stage">
       <img class="layer bg" src="${A("bg/" + season)}" alt="" draggable="false">
-      ${prop(`house house-${houseLv}`, A("buildings/house-" + houseLv), placeStyle(LAYOUT.house, season, houseLv), "", { inner: antenna })}
-      ${prop(`sarai sarai-${saraiLv}`, A("buildings/sarai-" + saraiLv), placeStyle(LAYOUT.sarai, season, saraiLv))}
-      ${upgrades.bathhouse ? prop("bathhouse", A("buildings/bathhouse"), placeStyle(LAYOUT.bathhouse, season)) : ""}
-      ${upgrades.apple ? prop("apple", appleSrc(season), placeStyle(LAYOUT.apple, season), "", { inner: birdOnTree }) : ""}
+      <div class="tod-tint" aria-hidden="true"></div>
+      <div class="home-ambient" aria-hidden="true">
+        <span class="cloud c1"></span><span class="cloud c2"></span><span class="cloud c3"></span>
+        <span class="bird b1"></span><span class="bird b2"></span>
+        <span class="smoke s1"></span>
+      </div>
+      <div class="home-paths ${season}" aria-hidden="true"></div>
+      ${prop(`house house-${houseLv}`, A("buildings/house-" + houseLv), placeStyle(LAYOUT.house, season, houseLv), "", { inner: antenna + `
+        <button type="button" class="hotspot" data-dela data-dela-tab="quests" data-hotspot="house" data-testid="hot-dela" aria-label="Дела">
+          <span class="hs-label">Дела</span>
+          <span class="hs-badge" data-badge="dela" hidden></span>
+        </button>`, ...W })}
+      ${prop(`sarai sarai-${saraiLv}`, A("buildings/sarai-" + saraiLv), placeStyle(LAYOUT.sarai, season, saraiLv), "", { inner: `
+        <button type="button" class="hotspot" data-nav="barn" data-hotspot="sarai" data-testid="hot-sarai" aria-label="Сарай">
+          <span class="hs-label">Сарай</span>
+        </button>`, ...W })}
+      ${upgrades.bathhouse ? prop("bathhouse", A("buildings/bathhouse"), placeStyle(LAYOUT.bathhouse, season), "", W) : ""}
+      ${upgrades.apple ? prop("apple sway", appleSrc(season), placeStyle(LAYOUT.apple, season), "", { inner: birdOnTree, winter: season === "winter" }) : ""}
       ${birdOnPole}
-      ${ghOn ? prop("greenhouse", A("buildings/greenhouse"), placeStyle(LAYOUT.greenhouse, season)) : ""}
-      ${upgrades.well ? prop("well", A("buildings/well"), placeStyle(LAYOUT.well, season)) : ""}
+      ${ghOn ? prop("greenhouse", A("buildings/greenhouse"), placeStyle(LAYOUT.greenhouse, season), "", W) : ""}
+      ${upgrades.well ? prop("well", A("buildings/well"), placeStyle(LAYOUT.well, season), "", { winter: season === "winter" }) : ""}
+      ${upgrades.kitchen ? prop("kitchen", A("buildings/kitchen"), placeStyle(LAYOUT.kitchen, season), "", { inner: kitchenInner, ...W }) : ""}
+      ${upgrades.cellar ? prop("cellar", A("buildings/cellar"), placeStyle(LAYOUT.cellar, season), "", { inner: `
+        <button type="button" class="hotspot" data-open-craft data-hotspot="cellar" data-testid="hot-cellar" aria-label="Погреб">
+          <span class="hs-label">Погреб</span>
+        </button>`, ...W }) : ""}
       ${plotsLayer(plots, season)}
       ${pensLayer(pens, animals, season)}
-      ${prop(`fence fence-${fenceLv}`, A("fence/fence-" + fenceLv), placeStyle(LAYOUT.fence, season))}
-      ${upgrades.bench ? prop("bench", A("decor/bench"), placeStyle(LAYOUT.bench, season)) : ""}
-      ${prop(`transport transport-${transLv}`, A("transport/" + TRANSPORT[transLv]), placeStyle(LAYOUT.transport, season, transLv))}
-      ${prop("farmer", A("farmer/" + season), placeStyle(LAYOUT.farmer, season), 'data-testid="farmer-art"')}
+      ${prop(`fence fence-${fenceLv}`, A("fence/fence-" + fenceLv), placeStyle(LAYOUT.fence, season), "", { winter: season === "winter", shadow: true })}
+      ${upgrades.bench ? prop("bench", A("decor/bench"), placeStyle(LAYOUT.bench, season), "", { winter: season === "winter" }) : ""}
+      ${prop(`transport transport-${transLv}`, A("transport/" + TRANSPORT[transLv]), placeStyle(LAYOUT.transport, season, transLv), "", { winter: season === "winter" })}
+      ${prop("farmer", A("farmer/" + season), placeStyle(LAYOUT.farmer, season), 'data-testid="farmer-art"', { winter: season === "winter" })}
       </div>
     </div>`;
   }
@@ -191,7 +247,9 @@
     urls.push(
       A("buildings/greenhouse"), A("buildings/well"), A("buildings/bathhouse"),
       A("decor/bench"), A("decor/antenna"), A("decor/birdhouse"), A("decor/pen"),
-      A("stages/soil"), A("stages/sprout"), A("stages/growing"), A("stages/withered"),
+      A("stages/soil"), A("stages/soil-winter"), A("stages/sprout"), A("stages/growing"), A("stages/withered"),
+      A("buildings/kitchen"), A("buildings/cellar"), A("buildings/stove"), A("buildings/separator"),
+      A("buildings/spinner"), A("buildings/barrel"),
     );
     return urls;
   }

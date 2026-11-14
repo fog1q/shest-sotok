@@ -1,14 +1,14 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
   <base href="/shest-sotok/" />
+  <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <meta name="color-scheme" content="light" />
   <meta name="theme-color" content="#8b1e18" />
   <title>Шесть соток</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="styles.css?v=20261114b" />
+  <link rel="stylesheet" href="styles.css?v=20261114c" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%238B1E18'/%3E%3Crect x='6' y='6' width='52' height='52' rx='4' fill='none' stroke='%23D4B03A' stroke-width='3'/%3E%3Cpath d='M32 16 L44 32 L32 48 L20 32 Z' fill='%234F5530'/%3E%3Ccircle cx='32' cy='32' r='5' fill='%23D4B03A'/%3E%3C/svg%3E" />
 </head>
 <body>
@@ -76,9 +76,13 @@
           <div id="home-art" data-testid="home-art"></div>
           <button type="button" class="farmer-hit" data-farmer="1" data-testid="farmer" aria-label="Поговорить с хозяином"></button>
           <div class="farmer-speech hidden" id="farmer-speech" data-testid="farmer-speech"></div>
+          <div class="tg-sim-chrome" id="tg-sim-chrome" hidden aria-hidden="true">
+            <span class="tg-sim-pill left">Закрыть</span>
+            <span class="tg-sim-pill right">⋯</span>
+          </div>
           <div class="home-hud">
             <p class="greet home-greet" id="home-greet" data-testid="home-greet">Здравствуйте, сосед!</p>
-            <div class="home-stats">
+            <div class="home-hud-row">
               <div class="stat coins" data-testid="home-coins">
                 <span class="coin-icon" aria-hidden="true"></span>
                 <span class="value" id="home-coins-value">0</span>
@@ -90,23 +94,20 @@
                 <div class="xp-bar"><div class="xp-fill" id="home-xp-fill"></div></div>
               </div>
             </div>
-            <div class="home-cal" data-testid="home-calendar">
+            <button type="button" class="home-cal-chip" id="home-cal-chip" data-dela data-dela-tab="calendar" data-testid="home-calendar">
               <span id="home-cal-day" data-testid="home-cal-day">1</span>
               <span id="home-cal-season" data-testid="home-cal-season">Весна</span>
               <span id="home-cal-eta" data-testid="home-cal-eta">до лета 3:00</span>
-            </div>
-            <div class="home-weather-text">
-              <span id="home-weather-today" data-testid="home-weather-today"></span>
-              <span id="home-weather-tomorrow" data-testid="home-weather-tomorrow"></span>
-            </div>
+              <span class="chip-weather" id="home-weather-today" data-testid="home-weather-today"></span>
+            </button>
+            <span id="home-weather-tomorrow" class="visually-hidden" data-testid="home-weather-tomorrow"></span>
             <div class="home-notes" id="home-notes" data-testid="home-notes"></div>
-            <div class="home-actions">
-              <button type="button" class="btn primary" data-nav="upgrades" data-testid="nav-upgrades">Улучшения</button>
-              <button type="button" class="btn" data-nav="farm" data-testid="home-to-farm">Участок</button>
-              <button type="button" class="btn" data-nav="yard" data-testid="home-to-yard">Двор</button>
-              <button type="button" class="btn" data-nav="shop" data-testid="home-to-shop">Сельпо</button>
+            <div class="home-hud-pills">
+              <button type="button" class="pill primary" data-nav="upgrades" data-testid="nav-upgrades">Улучшения</button>
+              <button type="button" class="pill" data-dela data-dela-tab="quests" data-testid="nav-dela">Дела <span class="hs-badge" data-testid="dela-badge" data-badge="dela" hidden></span></button>
             </div>
           </div>
+          <p class="home-tip" id="home-tip" data-testid="home-tip"></p>
         </div>
       </section>
 
@@ -139,6 +140,7 @@
           </div>
           <div class="picket picket-bottom" aria-hidden="true"></div>
           <p class="hint yard-hint" id="farm-hint">Нажмите на грядку, чтобы посадить семена</p>
+          <div class="farm-tools" id="farm-tools" data-testid="farm-tools"></div>
         </div>
       </section>
 
@@ -150,6 +152,9 @@
           <div class="cards" id="shop-list" data-testid="shop-list"></div>
           <h3 class="section-title">Для двора</h3>
           <div class="cards" id="shop-feed" data-testid="shop-feed"></div>
+          <h3 class="section-title">Ярмарка</h3>
+          <p class="hint">Цены дня — спрос то выше, то ниже сельпо. Иногда приходит особый покупатель.</p>
+          <div class="cards" id="fair-list" data-testid="fair-list"></div>
         </div>
       </section>
 
@@ -216,10 +221,21 @@
     </div>
   </div>
 
+  <div id="dela-overlay" class="panel-overlay hidden" data-testid="dela-overlay">
+    <button type="button" class="panel-backdrop" data-close-dela aria-label="Закрыть"></button>
+    <div class="panel-sheet" id="dela-panel" data-tab="quests" data-testid="dela-panel"></div>
+  </div>
+
+  <div id="craft-overlay" class="panel-overlay hidden" data-testid="craft-overlay">
+    <button type="button" class="panel-backdrop" data-close-craft aria-label="Закрыть"></button>
+    <div class="panel-sheet" id="craft-panel" data-testid="craft-panel"></div>
+  </div>
+
   <div id="toasts" class="toasts" aria-live="polite"></div>
 
-  <script src="data.js?v=20261114b"></script>
-  <script src="home.js?v=20261114b"></script>
-  <script src="game.js?v=20261114b"></script>
+  <script src="data.js?v=20261114c"></script>
+  <script src="home.js?v=20261114c"></script>
+  <script src="loop.js?v=20261114c"></script>
+  <script src="game.js?v=20261114c"></script>
 </body>
 </html>

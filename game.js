@@ -16,9 +16,10 @@
   let DAYS_PER_SEASON = D.TIMING.DAYS_PER_SEASON;
   const seasonMs = () => DAY_MS * DAYS_PER_SEASON;
 
-  const SAVE_KEY = "shest-sotok-v4";
-  const SAVE_KEYS_OLD = ["shest-sotok-v3", "shest-sotok-v2", "shest-sotok-v1"];
-  const ASSET_VER = D.ASSET_VER || "20261114b";
+  const SAVE_KEY = "shest-sotok-v5";
+  const SAVE_KEYS_OLD = ["shest-sotok-v4", "shest-sotok-v3", "shest-sotok-v2", "shest-sotok-v1"];
+  const ASSET_VER = D.ASSET_VER || "20261114c";
+  const LOOP = window.SOTOK_LOOP;
   const TICK_MS = 250;
   const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
 
@@ -59,6 +60,10 @@
       wateredUntil: 0,
       withered: false,
       fertilized: false,
+      weeds: false,
+      pest: null,
+      thirsty: false,
+      careAt: 0,
     };
   }
 
@@ -73,13 +78,17 @@
       wateredUntil: 0,
       withered: false,
       fertilized: false,
+      weeds: false,
+      pest: null,
+      thirsty: false,
+      careAt: 0,
     };
   }
 
   function defaultState() {
     const t = now();
     return {
-      version: 4,
+      version: 5,
       coins: 80,
       xp: 0,
       claimedLevel: 1,
@@ -96,9 +105,18 @@
       lastSimAt: t,
       lastStormDay: -1,
       savedAt: t,
-      timingVersion: 4,
+      timingVersion: 5,
       timingMode: D.TIMING.fast ? "fast" : "play",
       redeemedGifts: [],
+      quests: [],
+      orders: [],
+      tutorial: { step: 0, done: false },
+      daily: { streak: 0, lastClaim: "", lastSeen: "" },
+      stations: { stove: [], barrel: [], separator: [], spinner: [] },
+      stats: { harvested: {}, sold: {}, collected: {}, crafted: {}, planted: {}, watered: 0, weeds: 0, pests: 0 },
+      questGenAt: 0,
+      orderGenAt: 0,
+      selectedTool: "",
     };
   }
 
@@ -114,7 +132,7 @@
 
   function warehouseUsed() {
     return Object.entries(state.warehouse || {}).reduce((s, [k, n]) => {
-      if (k === "fertilizer") return s;
+      if ((D.TOOL_IDS || ["fertilizer"]).includes(k)) return s;
       return s + (Number(n) || 0);
     }, 0);
   }
@@ -165,7 +183,7 @@
     const msIntoSeason = elapsed % seasonMs();
     const msToNextSeason = seasonMs() - msIntoSeason;
     const msIntoDay = elapsed % DAY_MS;
-    return { elapsed, dayIndex, seasonIndex, seasonId, dayInSeason, msToNextSeason, msIntoDay, year: Math.floor(seasonIndex / 4) + 1 };
+    return { elapsed, dayIndex, seasonIndex, seasonId, dayInSeason, msToNextSeason, msIntoDay, dayRatio: msIntoDay / DAY_MS, year: Math.floor(seasonIndex / 4) + 1 };
   }
 
   function hash32(n) {
@@ -265,6 +283,9 @@
       const watered = auto || (plot.wateredUntil && plot.wateredUntil > ts);
       rate = watered ? 1.05 : weather.growth;
     }
+    const wateredNow = (plot.wateredUntil && plot.wateredUntil > ts) || (state.upgrades && state.upgrades.well);
+    if (wateredNow && weather.id !== "rain") rate *= (D.WATER_BONUS || 1.25);
+    if (plot.weeds) rate *= (D.WEED_PENALTY || 0.7);
     return rate;
   }
 
@@ -361,6 +382,7 @@
       if (dt > 0) {
         applyGrowth(dt, weather, cursor);
         applyAnimals(dt, cursor, cal.seasonId);
+        if (LOOP) LOOP.tick(state, dt, chunkEnd, weather, cal);
       }
       if (chunkEnd === nextDay && chunkEnd <= targetTs) {
         const before = cal.seasonId;
@@ -370,6 +392,7 @@
       cursor = chunkEnd;
     }
     state.lastSimAt = targetTs;
+    if (LOOP) LOOP.tickStations(state, targetTs);
   }
 
   function sync(ts = now()) {
@@ -400,6 +423,37 @@
     setTimeout(() => el.remove(), 2400);
   }
 
+  function applySafeInsets(sa, csa) {
+    try {
+      sa = sa || {};
+      csa = csa || {};
+      const root = document.documentElement.style;
+      const topSa = Number(sa.top) || 0;
+      const topCsa = Number(csa.top) || 0;
+      const botSa = Number(sa.bottom) || 0;
+      const botCsa = Number(csa.bottom) || 0;
+      const leftSa = Number(sa.left) || 0;
+      const rightSa = Number(sa.right) || 0;
+      root.setProperty("--tg-safe-area-inset-top", `${topSa}px`);
+      root.setProperty("--tg-content-safe-area-inset-top", `${topCsa}px`);
+      root.setProperty("--tg-safe-area-inset-bottom", `${botSa}px`);
+      root.setProperty("--tg-content-safe-area-inset-bottom", `${botCsa}px`);
+      root.setProperty("--tg-safe-area-inset-left", `${leftSa}px`);
+      root.setProperty("--tg-safe-area-inset-right", `${rightSa}px`);
+      root.setProperty("--sat", `${topSa + topCsa}px`);
+      root.setProperty("--sab", `${botSa + botCsa}px`);
+    } catch (_) { /* ignore */ }
+  }
+
+  function simulateTelegramInsets(top) {
+    const raw = (top && typeof top === "object") ? (top.top || 0) : top;
+    const px = Math.max(0, Number(raw) || 0);
+    applySafeInsets({ top: px, bottom: 0, left: 0, right: 0 }, { top: 0, bottom: 0 });
+    document.documentElement.classList.toggle("sim-tg-inset", px > 0);
+    const chrome = document.getElementById("tg-sim-chrome");
+    if (chrome) chrome.hidden = px <= 0;
+  }
+
   function initTelegram() {
     const greet = $("#greet");
     let name = "сосед";
@@ -415,23 +469,15 @@
         if (typeof tg.requestFullscreen === "function") {
           try { tg.requestFullscreen(); } catch (_) { /* optional */ }
         }
-        const applySafe = () => {
-          try {
-            const sa = tg.safeAreaInset || {};
-            const csa = tg.contentSafeAreaInset || {};
-            const root = document.documentElement.style;
-            root.setProperty("--sat", `${(sa.top || 0) + (csa.top || 0)}px`);
-            root.setProperty("--sab", `${(sa.bottom || 0) + (csa.bottom || 0)}px`);
-          } catch (_) { /* ignore */ }
-        };
-        applySafe();
+        applySafeInsets(tg.safeAreaInset, tg.contentSafeAreaInset);
         if (typeof tg.onEvent === "function") {
           tg.onEvent("viewportChanged", () => {
             try { if (typeof tg.expand === "function") tg.expand(); } catch (_) { /* ignore */ }
-            applySafe();
+            applySafeInsets(tg.safeAreaInset, tg.contentSafeAreaInset);
           });
-          tg.onEvent("safeAreaChanged", applySafe);
-          tg.onEvent("contentSafeAreaChanged", applySafe);
+          tg.onEvent("safeAreaChanged", () => applySafeInsets(tg.safeAreaInset, tg.contentSafeAreaInset));
+          tg.onEvent("contentSafeAreaChanged", () => applySafeInsets(tg.safeAreaInset, tg.contentSafeAreaInset));
+          tg.onEvent("fullscreenChanged", () => applySafeInsets(tg.safeAreaInset, tg.contentSafeAreaInset));
         }
         const user = tg.initDataUnsafe && tg.initDataUnsafe.user;
         if (user && user.first_name) name = user.first_name;
@@ -471,7 +517,7 @@
     for (const key of ["house", "fence", "transport", "sarai"]) {
       u[key] = Math.max(0, Math.min(Number(u[key]) || 0, (UPGRADES[key].levels.length - 1)));
     }
-    for (const key of ["well", "bathhouse", "apple", "bench", "antenna", "birdhouse"]) {
+    for (const key of ["well", "bathhouse", "apple", "bench", "antenna", "birdhouse", "kitchen", "cellar", "separator", "spinner"]) {
       u[key] = Boolean(u[key]);
     }
     return u;
@@ -547,7 +593,9 @@
       : levelFromXp(typeof data.xp === "number" ? data.xp : 0);
     next.plots = (next.plots || []).map((p) => ({ fertilized: false, ...p }));
     next.greenhouse = (next.greenhouse || []).map((p) => ({ fertilized: false, ...p }));
-    const alreadyV4 = data.version === 4 && data.timingVersion === 4;
+    const alreadyV4 = (data.version === 4 && data.timingVersion === 4)
+      || data.version >= 5
+      || (data.timingVersion && data.timingVersion >= 5);
     const currentMode = D.TIMING.fast ? "fast" : "play";
     if (!alreadyV4) {
       rebaseCalendar(next, data, D.TIMING.LEGACY_DAY_MS);
@@ -555,12 +603,12 @@
       next.plots.forEach((p) => scaleGrowth(p, fromFast));
       next.greenhouse.forEach((p) => scaleGrowth(p, fromFast));
       next.animals = (next.animals || []).map((a) => scaleAnimal({ ...a }, fromFast));
-    } else if (data.timingMode && data.timingMode !== currentMode) {
+    } else if (data.version < 5 && data.timingMode && data.timingMode !== currentMode) {
       const fromFast = data.timingMode === "fast";
       next.plots.forEach((p) => scaleGrowth(p, fromFast));
       next.greenhouse.forEach((p) => scaleGrowth(p, fromFast));
       next.animals = (next.animals || []).map((a) => scaleAnimal({ ...a }, fromFast));
-      rebaseCalendar(next, data, fromFast ? D.TIMING.FAST_DAY_MS : Math.floor(D.TIMING.SEASON_REAL_DAYS * 86400000 / D.TIMING.DAYS_PER_SEASON));
+      rebaseCalendar(next, data, fromFast ? D.TIMING.FAST_DAY_MS : (D.TIMING.LEGACY_V4_PLAY_DAY_MS || 6 * 60 * 60 * 1000));
     }
     next.timingVersion = 4;
     next.timingMode = currentMode;
@@ -570,14 +618,78 @@
     return next;
   }
 
+  function scaleGrowthBy(plot, oldG, newG) {
+    if (!plot || !plot.cropId || !oldG || !newG) return plot;
+    if (plot.grownMs >= oldG) plot.grownMs = newG;
+    else plot.grownMs = plot.grownMs * (newG / oldG);
+    return plot;
+  }
+
+  function scaleAnimalBy(animal, oldTimes, def) {
+    if (!animal || !def) return animal;
+    if (oldTimes && oldTimes.growMs && def.growMs && animal.grownMs) {
+      if (animal.grownMs >= oldTimes.growMs) animal.grownMs = def.growMs;
+      else animal.grownMs = animal.grownMs * (def.growMs / oldTimes.growMs);
+    }
+    if (oldTimes && oldTimes.productTime && def.productTime && animal.productMs) {
+      if (animal.productMs >= oldTimes.productTime) animal.productMs = def.productTime;
+      else animal.productMs = animal.productMs * (def.productTime / oldTimes.productTime);
+    }
+    return animal;
+  }
+
+  function migrateToV5(next, data) {
+    next.version = 5;
+    if (LOOP) LOOP.ensure(next);
+    const currentMode = D.TIMING.fast ? "fast" : "play";
+    const alreadyV5 = data.version === 5 && data.timingVersion === 5;
+    const v4PlayCrops = D.LEGACY_V4_PLAY_CROP_GROW_MS || {};
+    const v4PlayAnimals = D.LEGACY_V4_PLAY_ANIMAL_TIMES || {};
+    const v4PlayDay = D.TIMING.LEGACY_V4_PLAY_DAY_MS || 6 * 60 * 60 * 1000;
+    if (!alreadyV5) {
+      if (data.version === 4 && data.timingVersion === 4) {
+        const fromMode = data.timingMode || "play";
+        if (fromMode === "play") {
+          (next.plots || []).forEach((p) => {
+            const crop = p.cropId && CROPS[p.cropId];
+            if (crop) scaleGrowthBy(p, v4PlayCrops[p.cropId] || crop.growMsFast, crop.growMs);
+          });
+          (next.greenhouse || []).forEach((p) => {
+            const crop = p.cropId && CROPS[p.cropId];
+            if (crop) scaleGrowthBy(p, v4PlayCrops[p.cropId] || crop.growMsFast, crop.growMs);
+          });
+          next.animals = (next.animals || []).map((a) => scaleAnimalBy({ ...a }, v4PlayAnimals[a.kind], ANIMALS[a.kind]));
+          rebaseCalendar(next, data, v4PlayDay);
+        } else if (currentMode !== "fast") {
+          (next.plots || []).forEach((p) => scaleGrowth(p, true));
+          (next.greenhouse || []).forEach((p) => scaleGrowth(p, true));
+          next.animals = (next.animals || []).map((a) => scaleAnimal({ ...a }, true));
+          rebaseCalendar(next, data, D.TIMING.FAST_DAY_MS);
+        }
+      }
+    } else if (data.timingMode && data.timingMode !== currentMode) {
+      const fromFast = data.timingMode === "fast";
+      (next.plots || []).forEach((p) => scaleGrowth(p, fromFast));
+      (next.greenhouse || []).forEach((p) => scaleGrowth(p, fromFast));
+      next.animals = (next.animals || []).map((a) => scaleAnimal({ ...a }, fromFast));
+      const oldDay = fromFast
+        ? D.TIMING.FAST_DAY_MS
+        : Math.floor(D.TIMING.SEASON_REAL_HOURS * 3600000 / D.TIMING.DAYS_PER_SEASON);
+      rebaseCalendar(next, data, oldDay);
+    }
+    next.timingVersion = 5;
+    next.timingMode = currentMode;
+    return next;
+  }
+
   function migrate(raw) {
     if (!raw) return null;
     let data;
     try { data = typeof raw === "string" ? JSON.parse(raw) : raw; } catch { return null; }
     if (!data || typeof data !== "object") return null;
     const base = defaultState();
-    if ((data.version === 4 || data.version === 3 || data.version === 2) && Array.isArray(data.plots)) {
-      return migrateToV4(data, base);
+    if ((data.version === 5 || data.version === 4 || data.version === 3 || data.version === 2) && Array.isArray(data.plots)) {
+      return migrateToV5(migrateToV4(data, base), data);
     }
     if (data.version === 1) {
       const next = defaultState();
@@ -659,6 +771,11 @@
     return `<img class="icon-art" src="${art("products/" + id)}" alt="">`;
   }
 
+  function soilArt() {
+    const season = state ? calendarAt().seasonId : "spring";
+    return art(season === "winter" ? "stages/soil-winter" : "stages/soil");
+  }
+
   function plantMarkup(cropId, stage, asIcon) {
     const st = `plant ${cropId || ""} stage-${stage}`;
     if (asIcon || stage >= 4) {
@@ -693,6 +810,10 @@
     if (id === "bench") return art("decor/bench");
     if (id === "antenna") return art("decor/antenna");
     if (id === "birdhouse") return art("decor/birdhouse");
+    if (id === "kitchen") return art("buildings/kitchen");
+    if (id === "cellar") return art("buildings/cellar");
+    if (id === "separator") return art("buildings/separator");
+    if (id === "spinner") return art("buildings/spinner");
     return "";
   }
 
@@ -838,18 +959,29 @@
     const prog = cropProgress(plot, ts);
     if (!prog) {
       return `<button type="button" class="plot empty ${plot.kind}" data-plot="${plot.id}" data-testid="${testId}" aria-label="Пустая грядка">
-        <img class="plot-stage" src="${art("stages/soil")}" alt="">
+        <img class="plot-stage" src="${soilArt()}" alt="">
       </button>`;
     }
-    const cls = prog.ready ? "plot ready" : "plot growing";
+    const cls = [prog.ready ? "plot ready" : "plot growing", plot.kind];
+    if (plot.thirsty) cls.push("thirsty");
+    if (plot.weeds) cls.push("weedy");
+    if (plot.pest) cls.push("pesty");
     let timer = "Готово!";
     if (!prog.ready) {
       timer = prog.remainMs === Infinity ? "Стоп" : formatTime(prog.remainMs);
     }
-    return `<button type="button" class="${cls} ${plot.kind}" data-plot="${plot.id}" data-testid="${testId}">
+    const care = [];
+    if (plot.thirsty) care.push(`<span class="care-ico thirst" title="Полить"></span>`);
+    if (plot.weeds) care.push(`<img class="care-ico weeds" src="${art("decor/weeds")}" alt="">`);
+    if (plot.pest) {
+      const pd = (D.PESTS || {})[plot.pest];
+      care.push(`<img class="care-ico pest" src="${art(pd && pd.icon ? pd.icon : "pests/beetle")}" alt="">`);
+    }
+    return `<button type="button" class="${cls.join(" ")}" data-plot="${plot.id}" data-testid="${testId}">
       ${plantMarkup(prog.crop.id, prog.stage)}
       <span class="timer">${timer}</span>
       <span class="progress-pip"><i style="width:${Math.round(prog.ratio * 100)}%"></i></span>
+      ${care.length ? `<span class="care-row">${care.join("")}</span>` : ""}
     </button>`;
   }
 
@@ -877,6 +1009,30 @@
       } else {
         hint.textContent = "Нажмите на грядку, чтобы посадить семена";
       }
+      const b = LOOP ? LOOP.badges(state, now()) : {};
+      const bits = [];
+      if (b.thirsty) bits.push("можно полить");
+      if (b.weeds) bits.push("есть сорняки");
+      if (b.pests) bits.push("вредители");
+      if (bits.length) hint.textContent = "На участке " + bits.join(", ") + ". Берите лейку или золу.";
+    }
+    const tools = $("#farm-tools");
+    if (tools) {
+      const tool = state.selectedTool || "";
+      const count = (id) => state.warehouse[id] || 0;
+      tools.innerHTML = `
+        <button type="button" class="tool-btn ${tool === "leika" ? "on" : ""}" data-tool="leika" data-testid="tool-leika">
+          <img src="${art("products/leika")}" alt="">Лейка
+        </button>
+        <button type="button" class="tool-btn ${tool === "hand" ? "on" : ""}" data-tool="hand" data-testid="tool-weeds">
+          <img src="${art("decor/weeds")}" alt="">Прополка
+        </button>
+        <button type="button" class="tool-btn ${tool === "dust" ? "on" : ""}" data-tool="dust" data-testid="tool-dust">
+          <img src="${art("products/dust")}" alt="">Дуст (${count("dust")})
+        </button>
+        <button type="button" class="tool-btn ${tool === "ash" ? "on" : ""}" data-tool="ash" data-testid="tool-ash">
+          <img src="${art("products/ash")}" alt="">Зола (${count("ash")})
+        </button>`;
     }
   }
 
@@ -934,6 +1090,43 @@
         </div>
         <button type="button" class="btn primary" data-buy-feed="1" data-testid="buy-feed" ${can ? "" : "disabled"}>${FEED_BUY_PRICE} р.</button>
       </article>`;
+      const tools = ["dust", "ash"].map((id) => {
+        const prod = PRODUCTS[id];
+        if (!prod) return "";
+        const price = prod.buyPrice || 8;
+        const canT = state.coins >= price;
+        return `<article class="card" data-testid="shop-${id}">
+          <div class="thumb">${productIcon(id)}</div>
+          <div>
+            <h3>${prod.name}</h3>
+            <p class="meta">От вредителей на грядках.</p>
+            <p class="stock">В запасе: ${state.warehouse[id] || 0}</p>
+          </div>
+          <button type="button" class="btn primary" data-buy-tool="${id}" data-testid="buy-${id}" ${canT ? "" : "disabled"}>${price} р.</button>
+        </article>`;
+      }).join("");
+      feedBox.innerHTML += tools;
+    }
+    const fair = $("#fair-list");
+    if (fair && LOOP) {
+      const dayIndex = cal.dayIndex;
+      const ids = CROP_ORDER.concat(["egg", "milk", "wool", "down"]).concat(D.CRAFT_IDS || []);
+      const rows = ids.map((id) => {
+        const have = state.warehouse[id] || 0;
+        if (!have) return "";
+        const info = LOOP.fairPrice(state, id, dayIndex);
+        const base = LOOP.sellPrice(id);
+        return `<article class="card ${info.special ? "special-buy" : ""}" data-testid="fair-${id}">
+          <div class="thumb">${CROPS[id] ? cropIcon(id) : productIcon(id)}</div>
+          <div>
+            <h3>${LOOP.itemName(id)}${info.special ? " · особый спрос" : ""}</h3>
+            <p class="meta">Сельпо: ${base} · ярмарка: ${info.price} (×${info.mult})</p>
+            <p class="stock">У вас: ${have}</p>
+          </div>
+          <button type="button" class="btn good" data-fair-sell="${id}" data-testid="fair-sell-${id}">Сдать на ярмарке</button>
+        </article>`;
+      }).filter(Boolean).join("");
+      fair.innerHTML = rows || "<p class='hint'>Принесите урожай или заготовки — цены сегодня гуляют.</p>";
     }
   }
 
@@ -971,6 +1164,14 @@
         <p class="meta">В запасе: ${fertN}. Внесите на растущую грядку — ускорит оставшийся рост вдвое.</p>
       </div>
     </article>`);
+    blocks.push(`<article class="card" data-testid="barn-craft-entry">
+      <div class="thumb"><img class="icon-art" src="${art("buildings/stove")}" alt=""></div>
+      <div>
+        <h3>Переработка</h3>
+        <p class="meta">Варенье, сметана, соленья и носки. Станции покупаются в улучшениях.</p>
+      </div>
+      <button type="button" class="btn primary" data-open-craft data-testid="open-craft">К станкам</button>
+    </article>`);
     const cropItems = CROP_ORDER.filter((id) => (state.warehouse[id] || 0) > 0);
     for (const id of cropItems) {
       const crop = CROPS[id];
@@ -986,7 +1187,8 @@
         <button type="button" class="btn good" data-sell="${id}" data-testid="sell-${id}">Сдать</button>
       </article>`);
     }
-    for (const pid of ["egg", "down", "milk", "wool"]) {
+    const barnExtra = ["egg", "down", "milk", "wool"].concat(D.CRAFT_IDS || []).concat(["dust", "ash"]);
+    for (const pid of barnExtra) {
       const count = state.warehouse[pid] || 0;
       if (!count) continue;
       const prod = PRODUCTS[pid];
@@ -1196,6 +1398,26 @@
     const tm = $("#home-weather-tomorrow");
     if (tw) tw.textContent = `Сегодня: ${weather.name.toLowerCase()}, ${temp(weather)}. ${weather.line}.`;
     if (tm) tm.textContent = `Завтра: ${tomorrow.name.toLowerCase()}, ${temp(tomorrow)}. ${tomorrow.line}.`;
+    const scene = $("#home-scene");
+    if (scene && LOOP) scene.dataset.tod = LOOP.timeOfDay(cal);
+    if (LOOP) {
+      const tip = LOOP.farmerTip(state, cal, weather, ts);
+      const speech = $("#farmer-speech");
+      const bubble = $("#home-tip");
+      if (bubble) bubble.textContent = tip;
+      const b = LOOP.badges(state, ts);
+      const setBadge = (sel, n) => {
+        $$(sel).forEach((el) => {
+          el.textContent = n > 0 ? String(n) : "";
+          el.hidden = n <= 0;
+        });
+      };
+      setBadge("[data-badge=plots]", b.farm);
+      setBadge("[data-badge=pens]", b.yard);
+      setBadge("[data-badge=dela]", b.dela);
+      setBadge("[data-badge=craft]", b.craft);
+      setBadge("[data-testid=dela-badge]", b.dela);
+    }
     const notes = homeNotes(cal, ts);
     const box = $("#home-notes");
     if (box) {
@@ -1204,6 +1426,153 @@
         : "";
       box.classList.toggle("empty", !notes.length);
     }
+  }
+
+
+  function renderDela() {
+    const panel = document.getElementById("dela-panel");
+    if (!panel || !LOOP) return;
+    const ts = now();
+    LOOP.ensure(state);
+    LOOP.fillQuests(state, ts);
+    LOOP.fillOrders(state, ts);
+    const tab = panel.dataset.tab || "quests";
+    const b = LOOP.badges(state, ts);
+    const dailyOk = LOOP.dailyAvailable(state);
+    const streak = (state.daily && state.daily.streak) || 0;
+    const rowsQ = (state.quests || []).map((q) => {
+      const ready = (q.progress || 0) >= q.count;
+      return `<article class="dela-card ${ready ? "ready" : ""} ${q.tutorial ? "tut" : ""}" data-testid="quest-${q.id}">
+        <div>
+          <h3>${q.title}</h3>
+          <p>${q.text} · ${q.progress || 0}/${q.count}</p>
+          <p class="meta">Награда: ${q.coins} р. + ${q.xp} опыта</p>
+        </div>
+        <button type="button" class="btn primary" data-claim-quest="${q.id}" data-testid="claim-quest-${q.id}" ${ready ? "" : "disabled"}>Забрать</button>
+      </article>`;
+    }).join("") || "<p class='hint'>Пока тишина у правления. Загляните позже.</p>";
+    const rowsO = (state.orders || []).map((o) => {
+      const n = (D.NEIGHBORS || {})[o.neighbor];
+      const have = state.warehouse[o.item] || 0;
+      const can = have >= o.count;
+      const left = Math.max(0, o.expiresAt - ts);
+      return `<article class="dela-card order ${can ? "ready" : ""}" data-testid="order-${o.id}">
+        <div class="npc-row">
+          <img class="npc-face" src="${art(n && n.portrait ? n.portrait : "npc/nyura")}" alt="">
+          <div>
+            <h3>${n ? n.name : o.neighbor}</h3>
+            <p>Просит: ${LOOP.itemName(o.item)} × ${o.count} (у вас ${have})</p>
+            <p class="meta">Даст ${o.reward} р. · ещё ${formatTime(left)}</p>
+          </div>
+        </div>
+        <button type="button" class="btn primary" data-fulfill-order="${o.id}" data-testid="fulfill-order" ${can ? "" : "disabled"}>Отнести</button>
+      </article>`;
+    }).join("") || "<p class='hint'>Соседи пока не заглядывали.</p>";
+    const calDays = (D.DAILY_BONUS || []).map((row) => {
+      const on = streak === row.day && dailyOk;
+      const done = streak > row.day || (streak === row.day && !dailyOk);
+      return `<div class="bonus-day ${done ? "done" : ""} ${on ? "today" : ""}" data-testid="bonus-day-${row.day}">
+        <b>${row.day}</b>
+        <span>${row.coins} р.</span>
+      </div>`;
+    }).join("");
+    panel.innerHTML = `
+      <div class="dela-head">
+        <h2>Дела</h2>
+        <button type="button" class="btn" data-close-dela data-testid="dela-close">Закрыть</button>
+      </div>
+      <div class="dela-tabs">
+        <button type="button" class="dela-tab ${tab === "quests" ? "on" : ""}" data-dela-tab="quests" data-testid="dela-tab-quests">Задания${b.quests && tab !== "x" ? "" : ""}</button>
+        <button type="button" class="dela-tab ${tab === "orders" ? "on" : ""}" data-dela-tab="orders" data-testid="dela-tab-orders">Заказы</button>
+        <button type="button" class="dela-tab ${tab === "calendar" ? "on" : ""}" data-dela-tab="calendar" data-testid="dela-tab-calendar">Календарь</button>
+      </div>
+      <div class="dela-body" data-testid="dela-body">
+        ${tab === "quests" ? `<div data-testid="quest-board">${rowsQ}</div>` : ""}
+        ${tab === "orders" ? `<div data-testid="order-board">${rowsO}</div>` : ""}
+        ${tab === "calendar" ? `
+          <div data-testid="daily-bonus">
+            <h3>Ежедневная премия</h3>
+            <div class="bonus-row">${calDays}</div>
+            <button type="button" class="btn primary" data-claim-daily data-testid="claim-daily" ${dailyOk ? "" : "disabled"}>${dailyOk ? "Получить премию" : "Уже получено сегодня"}</button>
+            <p class="hint">Серия: ${streak} из 7. Не пропускайте день.</p>
+            <h3>Погода</h3>
+            <p id="dela-weather">${$("#home-weather-today") ? $("#home-weather-today").textContent : ""}</p>
+            <p>${$("#home-weather-tomorrow") ? $("#home-weather-tomorrow").textContent : ""}</p>
+          </div>` : ""}
+      </div>`;
+  }
+
+  function renderCraft() {
+    const panel = document.getElementById("craft-panel");
+    if (!panel || !LOOP) return;
+    const ts = now();
+    const level = levelFromXp(state.xp);
+    const recs = (D.RECIPE_ORDER || []).map((id) => D.RECIPES[id]).filter(Boolean);
+    const jobs = Object.keys(D.STATIONS || {}).flatMap((sid) =>
+      (state.stations[sid] || []).map((job, i) => ({ ...job, station: sid, index: i }))
+    );
+    const jobRows = jobs.map((job) => {
+      const rec = D.RECIPES[job.recipeId];
+      const left = Math.max(0, job.doneAt - ts);
+      return `<article class="dela-card ${job.ready ? "ready" : ""}" data-testid="craft-job-${job.station}-${job.index}">
+        <div><h3>${rec ? rec.name : job.recipeId}</h3><p>${job.ready ? "Готово!" : "Ещё " + formatTime(left)}</p></div>
+        <button type="button" class="btn primary" data-collect-job="${job.station}:${job.index}" data-testid="collect-job" ${job.ready ? "" : "disabled"}>Забрать</button>
+      </article>`;
+    }).join("");
+    const recRows = recs.map((rec) => {
+      const st = D.STATIONS[rec.station];
+      const owned = LOOP.stationOwned(state, rec.station);
+      const err = LOOP.canStartRecipe(state, rec.id);
+      const inputs = Object.entries(rec.inputs).map(([id, n]) => `${LOOP.itemName(id)} × ${n} (есть ${state.warehouse[id] || 0})`).join(", ");
+      const locked = !owned || level < rec.unlockLevel;
+      return `<article class="card ${locked ? "locked-crop" : ""}" data-testid="recipe-${rec.id}">
+        <div class="thumb"><img class="icon-art" src="${art("products/" + rec.output)}" alt=""></div>
+        <div>
+          <h3>${rec.name}</h3>
+          <p class="meta">${st ? st.name : rec.station} · ${formatTime(LOOP.recipeTime(rec))}</p>
+          <p class="stock">${inputs}</p>
+        </div>
+        <button type="button" class="btn primary" data-start-recipe="${rec.id}" data-testid="start-recipe-${rec.id}" ${err ? "disabled" : ""}>${
+          !owned ? "Нужна постройка" : (err === "inputs" ? "Мало припасов" : err === "queue" ? "Очередь" : err === "level" ? rec.unlockLevel + " разр." : "Начать")
+        }</button>
+      </article>`;
+    }).join("");
+    panel.innerHTML = `
+      <div class="dela-head">
+        <h2>Переработка</h2>
+        <button type="button" class="btn" data-close-craft data-testid="craft-close">Закрыть</button>
+      </div>
+      <div class="dela-body" data-testid="craft-body">
+        ${jobRows ? "<h3>В работе</h3>" + jobRows : ""}
+        <h3>Рецепты</h3>
+        <div class="cards">${recRows}</div>
+      </div>`;
+  }
+
+  function openDela(tab) {
+    const panel = document.getElementById("dela-overlay");
+    if (!panel) return;
+    const inner = document.getElementById("dela-panel");
+    if (inner && tab) inner.dataset.tab = tab;
+    panel.classList.remove("hidden");
+    renderDela();
+  }
+
+  function closeDela() {
+    const panel = document.getElementById("dela-overlay");
+    if (panel) panel.classList.add("hidden");
+  }
+
+  function openCraft() {
+    const panel = document.getElementById("craft-overlay");
+    if (!panel) return;
+    panel.classList.remove("hidden");
+    renderCraft();
+  }
+
+  function closeCraft() {
+    const panel = document.getElementById("craft-overlay");
+    if (panel) panel.classList.add("hidden");
   }
 
   function renderUpgrades() {
@@ -1269,6 +1638,22 @@
     if (currentView === "shop") renderShop();
     if (currentView === "yard") renderYard();
     if (currentView === "barn") renderBarn();
+    if (LOOP) {
+      renderDela();
+      renderCraft();
+      const b = LOOP.badges(state, now());
+      const dockHome = document.querySelector('[data-nav="home"]');
+      if (dockHome) {
+        let badge = dockHome.querySelector(".dock-badge");
+        if (!badge) {
+          badge = document.createElement("span");
+          badge.className = "dock-badge";
+          dockHome.appendChild(badge);
+        }
+        badge.textContent = b.dela + b.farm + b.yard + b.craft > 0 ? String(b.dela + b.farm + b.yard + b.craft) : "";
+        badge.hidden = (b.dela + b.farm + b.yard + b.craft) <= 0;
+      }
+    }
   }
 
   function showView(name) {
@@ -1354,11 +1739,18 @@
       else if (heat && !watered) extra = " Жара: полейте грядку, чтобы не терять время.";
       else if (weather.id === "rain") extra = " Дождь ускоряет рост.";
       const canFert = (state.warehouse.fertilizer || 0) > 0 && !plot.fertilized && prog.remainMs !== Infinity && prog.remainMs > 0;
+      const pestDef = plot.pest && (D.PESTS || {})[plot.pest];
+      const careBits = [];
+      if (plot.thirsty) careBits.push("Грядка хочет пить.");
+      if (plot.weeds) careBits.push("Пошли сорняки.");
+      if (pestDef) careBits.push("Напали: " + pestDef.name + ".");
       openSheet(`<h3>${prog.crop.name}</h3>
-        <p>${prog.remainMs === Infinity ? "Рост остановился." : `Ещё растёт. Осталось ${formatTime(prog.remainMs)}.`}${extra}${plot.fertilized ? " Удобрение уже внесено." : ""}</p>
+        <p>${prog.remainMs === Infinity ? "Рост остановился." : `Ещё растёт. Осталось ${formatTime(prog.remainMs)}.`}${extra}${plot.fertilized ? " Удобрение уже внесено." : ""}${careBits.length ? " " + careBits.join(" ") : ""}</p>
         <div class="sheet-actions">
           <button type="button" class="btn primary" data-close-sheet>Понятно</button>
-          ${heat && !watered ? `<button type="button" class="btn good" data-water="${plot.id}" data-testid="confirm-water">Полить</button>` : ""}
+          <button type="button" class="btn good" data-water="${plot.id}" data-testid="confirm-water">Полить</button>
+          ${plot.weeds ? `<button type="button" class="btn good" data-weed="${plot.id}" data-testid="confirm-weed">Прополоть</button>` : ""}
+          ${plot.pest ? `<button type="button" class="btn good" data-pest="${plot.id}" data-testid="confirm-pest">Прогнать вредителей</button>` : ""}
           ${canFert ? `<button type="button" class="btn good" data-fertilize="${plot.id}" data-testid="confirm-fertilize">Удобрить (${state.warehouse.fertilizer})</button>` : ""}
         </div>`);
       return;
@@ -1435,6 +1827,11 @@
     plot.grownMs = 0;
     plot.withered = false;
     plot.fertilized = false;
+    plot.weeds = false;
+    plot.pest = null;
+    plot.thirsty = false;
+    plot.careAt = now();
+    if (LOOP) LOOP.hookPlant(state, cropId);
     save(); haptic("medium"); closeSheet(); toast(`Посадили: ${crop.name}`); renderAll();
   }
 
@@ -1445,8 +1842,12 @@
     const prog = cropProgress(plot);
     if (!prog || !prog.ready) return;
     if (!canStore(1)) { toast("Сарай полон. Сдайте урожай или улучшите его."); return; }
-    state.warehouse[prog.crop.id] = (state.warehouse[prog.crop.id] || 0) + 1;
-    const xpGain = prog.crop.xp + (state.upgrades.bathhouse ? 1 : 0);
+    const damaged = !!plot.pest;
+    const qty = 1;
+    state.warehouse[prog.crop.id] = (state.warehouse[prog.crop.id] || 0) + qty;
+    let xpGain = prog.crop.xp + (state.upgrades.bathhouse ? 1 : 0);
+    if (damaged) xpGain = Math.max(1, Math.round(xpGain * (D.PEST_YIELD || 0.5)));
+    if (LOOP) { LOOP.hookHarvest(state, prog.crop.id, qty); LOOP.resetPlotCare(plot); }
     plot.cropId = null;
     plot.plantedAt = null;
     plot.grownMs = 0;
@@ -1454,7 +1855,9 @@
     plot.fertilized = false;
     addXp(xpGain);
     save(); haptic("success"); closeSheet();
-    toast(`Собрано: ${prog.crop.name}  ·  +${xpGain} опыта`);
+    toast(damaged
+      ? `Собрано с повреждением: ${prog.crop.name}  ·  +${xpGain} опыта`
+      : `Собрано: ${prog.crop.name}  ·  +${xpGain} опыта`);
     renderAll();
   }
 
@@ -1466,16 +1869,20 @@
     plot.grownMs = 0;
     plot.withered = false;
     plot.fertilized = false;
+    if (LOOP) LOOP.resetPlotCare(plot);
     save(); closeSheet(); toast("Грядка очищена"); renderAll();
   }
 
   function waterPlot(plotId) {
     sync();
     const plot = findPlot(plotId);
-    if (!plot || !plot.cropId) return;
-    const cal = calendarAt();
-    const dayEnd = state.worldStartedAt + (cal.dayIndex + 1) * DAY_MS;
-    plot.wateredUntil = dayEnd;
+    if (!plot || !plot.unlocked) return;
+    if (LOOP) LOOP.water(state, plot, now());
+    else {
+      const cal = calendarAt();
+      plot.wateredUntil = state.worldStartedAt + (cal.dayIndex + 1) * DAY_MS;
+      plot.thirsty = false;
+    }
     save(); haptic("light"); closeSheet(); toast("Полили грядку"); renderAll();
   }
 
@@ -1496,13 +1903,14 @@
     sync();
     const crop = CROPS[id];
     const prod = PRODUCTS[id];
-    if (id === "feed" || id === "fertilizer") return;
+    if (id === "feed" || (D.TOOL_IDS || ["fertilizer"]).includes(id)) return;
     const count = state.warehouse[id] || 0;
     if (count < 1) return;
     const price = crop ? crop.sellPrice : (prod ? prod.sellPrice : 0);
     const gain = count * price;
     state.warehouse[id] = 0;
     state.coins += gain;
+    if (LOOP) LOOP.hookSell(state, id, count);
     const name = crop ? crop.name : (prod ? prod.name : id);
     save(); haptic("success"); toast(`Сдано ${name}: +${rub(gain)}`); renderAll();
   }
@@ -1512,11 +1920,21 @@
     let gain = 0;
     for (const id of CROP_ORDER) {
       const n = state.warehouse[id] || 0;
-      if (n) { gain += n * CROPS[id].sellPrice; state.warehouse[id] = 0; }
+      if (n) {
+        gain += n * CROPS[id].sellPrice;
+        if (LOOP) LOOP.hookSell(state, id, n);
+        state.warehouse[id] = 0;
+      }
     }
-    for (const id of ["egg", "down", "milk", "wool"]) {
+    const sellIds = ["egg", "down", "milk", "wool"].concat(D.CRAFT_IDS || []);
+    for (const id of sellIds) {
       const n = state.warehouse[id] || 0;
-      if (n) { gain += n * PRODUCTS[id].sellPrice; state.warehouse[id] = 0; }
+      const price = PRODUCTS[id] && PRODUCTS[id].sellPrice;
+      if (n && price) {
+        gain += n * price;
+        if (LOOP) LOOP.hookSell(state, id, n);
+        state.warehouse[id] = 0;
+      }
     }
     if (!gain) return;
     state.coins += gain;
@@ -1576,6 +1994,7 @@
     if (!canStore(amount)) { toast("Сарай полон. Сдайте продукцию или улучшите сарай."); return; }
     state.warehouse[def.product] = (state.warehouse[def.product] || 0) + amount;
     animal.productMs = 0;
+    if (LOOP) LOOP.hookCollect(state, def.product, amount);
     addXp(def.productXp);
     save(); haptic("success");
     toast(`Собрали: ${PRODUCTS[def.product].name}  ·  +${def.productXp} опыта`);
@@ -1817,16 +2236,122 @@
     showGramota(g);
   }
 
+  function buyTool(id) {
+    sync();
+    const prod = PRODUCTS[id];
+    if (!prod || !prod.buyPrice) return;
+    if (state.coins < prod.buyPrice) { toast("Не хватает рублей"); return; }
+    state.coins -= prod.buyPrice;
+    state.warehouse[id] = (state.warehouse[id] || 0) + 1;
+    save(); haptic("light"); toast(`Купили: ${prod.name}`); renderAll();
+  }
+
+  function sellFair(id) {
+    sync();
+    if (!LOOP) return;
+    if ((D.TOOL_IDS || []).includes(id) || id === "feed") return;
+    const count = state.warehouse[id] || 0;
+    if (count < 1) return;
+    const info = LOOP.fairPrice(state, id, calendarAt().dayIndex);
+    const gain = count * info.price;
+    state.warehouse[id] = 0;
+    state.coins += gain;
+    LOOP.hookSell(state, id, count);
+    save(); haptic("success");
+    toast(`Ярмарка: ${LOOP.itemName(id)} × ${count} · +${rub(gain)}${info.special ? " (особый спрос!)" : ""}`);
+    renderAll();
+  }
+
+  function applyPlotTool(plotId, tool) {
+    const plot = findPlot(plotId);
+    if (!plot || !plot.unlocked) return false;
+    if (tool === "leika") { waterPlot(plotId); return true; }
+    if (tool === "hand") {
+      if (!plot.weeds) return false;
+      if (LOOP && LOOP.pullWeeds(state, plot)) {
+        save(); haptic("light"); closeSheet(); toast("Пропололи грядку  ·  +1 опыт"); renderAll();
+        return true;
+      }
+      return false;
+    }
+    if (tool === "dust" || tool === "ash" || tool === "hand-pest") {
+      if (!plot.pest) return false;
+      const use = tool === "hand-pest" ? "hand" : tool;
+      const res = LOOP ? LOOP.clearPest(state, plot, use) : false;
+      if (res === "need-tool") { toast("Нет пакетика под рукой"); return true; }
+      if (res) { save(); haptic("light"); closeSheet(); toast("Вредителей прогнали  ·  +1 опыт"); renderAll(); return true; }
+    }
+    return false;
+  }
+
   function onTap(e) {
-    const t = e.target.closest("[data-nav], [data-plot], [data-buy], [data-sell], [data-plant], [data-harvest], [data-unlock], [data-goto], [data-close-sheet], [data-clear], [data-water], [data-buy-feed], [data-craft], [data-buy-pen], [data-buy-animal], [data-feed], [data-collect], [data-sell-animal], [data-buy-upgrade], [data-farmer], [data-xp-preview], [data-close-gramota], [data-close-xp-preview], [data-fertilize], #btn-sell-all");
+    const t = e.target.closest("[data-nav], [data-plot], [data-buy], [data-sell], [data-plant], [data-harvest], [data-unlock], [data-goto], [data-close-sheet], [data-clear], [data-water], [data-buy-feed], [data-craft], [data-buy-pen], [data-buy-animal], [data-feed], [data-collect], [data-sell-animal], [data-buy-upgrade], [data-farmer], [data-xp-preview], [data-close-gramota], [data-close-xp-preview], [data-fertilize], [data-dela], [data-dela-tab], [data-close-dela], [data-claim-quest], [data-fulfill-order], [data-claim-daily], [data-open-craft], [data-close-craft], [data-start-recipe], [data-collect-job], [data-tool], [data-weed], [data-pest], [data-buy-tool], [data-fair-sell], [data-hotspot], #btn-sell-all, #home-cal-chip, .home-cal-chip");
     if (!t) return;
     if (t.hasAttribute("data-close-gramota")) { closeGramota(); return; }
     if (t.hasAttribute("data-close-xp-preview")) { closeXpPreview(); return; }
     if (t.hasAttribute("data-xp-preview")) { showXpPreview(); return; }
+    if (t.hasAttribute("data-close-dela")) { closeDela(); return; }
+    if (t.hasAttribute("data-close-craft")) { closeCraft(); return; }
+    if (t.dataset.delaTab) { openDela(t.dataset.delaTab); return; }
+    if (t.hasAttribute("data-dela") || t.classList.contains("home-cal-chip") || t.id === "home-cal-chip") { openDela(t.dataset.delaTab || "quests"); return; }
+    if (t.hasAttribute("data-open-craft") || t.dataset.hotspot === "craft") { openCraft(); return; }
+    if (t.dataset.claimQuest) {
+      const q = LOOP && LOOP.claimQuest(state, t.dataset.claimQuest);
+      if (q) { save(); haptic("success"); toast(`Задание выполнено: +${q.coins} р.`); renderAll(); }
+      return;
+    }
+    if (t.dataset.fulfillOrder) {
+      const o = LOOP && LOOP.fulfillOrder(state, t.dataset.fulfillOrder);
+      if (o === "need") { toast("Не хватает припасов"); return; }
+      if (o) { save(); haptic("success"); toast(`Отнесли заказ: +${o.reward} р.`); renderAll(); }
+      return;
+    }
+    if (t.hasAttribute("data-claim-daily")) {
+      const row = LOOP && LOOP.claimDaily(state);
+      if (row) { save(); haptic("success"); toast(`Премия дня: +${row.coins} р.`); renderAll(); }
+      return;
+    }
+    if (t.dataset.startRecipe) {
+      const err = LOOP && LOOP.startRecipe(state, t.dataset.startRecipe, now());
+      if (err === "inputs") toast("Мало припасов");
+      else if (err === "no-station") toast("Сначала купите станок в улучшениях");
+      else if (err === "queue") toast("Очередь занята");
+      else if (err) toast("Пока нельзя");
+      else { save(); haptic("medium"); toast("Поставили на огонь"); }
+      renderAll();
+      return;
+    }
+    if (t.dataset.collectJob) {
+      const [sid, idx] = t.dataset.collectJob.split(":");
+      const rec = LOOP && LOOP.collectJob(state, sid, Number(idx));
+      if (rec === "full") toast("Сарай полон");
+      else if (rec) { save(); haptic("success"); toast(`Готово: ${rec.name}`); }
+      renderAll();
+      return;
+    }
+    if (t.dataset.tool !== undefined) {
+      state.selectedTool = state.selectedTool === t.dataset.tool ? "" : t.dataset.tool;
+      renderField();
+      return;
+    }
+    if (t.dataset.weed !== undefined) { applyPlotTool(t.dataset.weed, "hand"); return; }
+    if (t.dataset.pest !== undefined) {
+      const plot = findPlot(t.dataset.pest);
+      const def = plot && plot.pest && (D.PESTS || {})[plot.pest];
+      const tool = (def && def.remedy && (state.warehouse[def.remedy] || 0) > 0) ? def.remedy : "hand-pest";
+      applyPlotTool(t.dataset.pest, tool);
+      return;
+    }
+    if (t.dataset.buyTool) { buyTool(t.dataset.buyTool); return; }
+    if (t.dataset.fairSell) { sellFair(t.dataset.fairSell); return; }
     if (t.dataset.nav) { showView(t.dataset.nav); return; }
     if (t.hasAttribute("data-close-sheet")) { closeSheet(); return; }
     if (t.dataset.goto) { closeSheet(); showView(t.dataset.goto); return; }
-    if (t.dataset.plot !== undefined) { openPlotSheet(t.dataset.plot); return; }
+    if (t.dataset.plot !== undefined) {
+      if (state.selectedTool && applyPlotTool(t.dataset.plot, state.selectedTool)) return;
+      openPlotSheet(t.dataset.plot);
+      return;
+    }
     if (t.dataset.buy) { buySeed(t.dataset.buy); return; }
     if (t.dataset.sell) { sellItem(t.dataset.sell); return; }
     if (t.id === "btn-sell-all") { sellAll(); return; }
@@ -1949,6 +2474,23 @@
     redeemGift,
     isFast: () => !!D.TIMING.fast,
     timing: () => ({ DAY_MS, DAYS_PER_SEASON, fast: !!D.TIMING.fast }),
+    setInsets: simulateTelegramInsets,
+    openDela, closeDela, openCraft, closeCraft,
+    waterPlot, applyPlotTool,
+    startRecipe: (id) => LOOP && LOOP.startRecipe(state, id, now()),
+    collectJob: (sid, i) => LOOP && LOOP.collectJob(state, sid, i),
+    claimQuest: (id) => LOOP && LOOP.claimQuest(state, id),
+    claimDaily: () => LOOP && LOOP.claimDaily(state),
+    fulfillOrder: (id) => LOOP && LOOP.fulfillOrder(state, id),
+    forceCare(plotId, flags) {
+      const plot = findPlot(plotId);
+      if (!plot) return;
+      if (flags && flags.thirsty) plot.thirsty = true;
+      if (flags && flags.weeds) plot.weeds = true;
+      if (flags && flags.pest) plot.pest = flags.pest === true ? "beetle" : flags.pest;
+      renderAll();
+    },
+    loop: () => LOOP,
     suspendSave() { persistEnabled = false; },
     resumeSave() { persistEnabled = true; },
     buyUpgrade,
@@ -2003,9 +2545,21 @@
   function boot() {
     preloadAssets();
     state = defaultState();
+    if (LOOP) {
+      LOOP.attach({
+        hash32, now, addXp, canStore, levelFromXp, toast, haptic, isHungryAt, calendarAt,
+      });
+      LOOP.ensure(state);
+    }
     initTelegram();
+    try {
+      const q = new URLSearchParams(location.search);
+      if (q.get("inset") === "1") simulateTelegramInsets(100);
+    } catch (_) { /* ignore */ }
     loadLocal();
+    if (LOOP && state) LOOP.ensure(state);
     loadCloudThen(() => {
+      if (LOOP && state) LOOP.ensure(state);
       sync();
       redeemGift().then(() => { renderAll(); });
     });
