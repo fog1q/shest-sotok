@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <base href="/shest-sotok/" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="color-scheme" content="light" />
+  <meta name="theme-color" content="#8b1e18" />
+  <title>Шесть соток</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%238B1E18'/%3E%3Crect x='6' y='6' width='52' height='52' rx='4' fill='none' stroke='%23D4B03A' stroke-width='3'/%3E%3Cpath d='M32 16 L44 32 L32 48 L20 32 Z' fill='%234F5530'/%3E%3Ccircle cx='32' cy='32' r='5' fill='%23D4B03A'/%3E%3C/svg%3E" />
+</head>
+<body>
+  <div id="app" data-season="spring" data-weather="sun">
+    <header class="wall">
+      <div class="carpet" aria-hidden="true"></div>
+      <div class="fringe" aria-hidden="true"></div>
+      <div class="wall-inner">
+        <div class="title-row">
+          <div class="title-block">
+            <h1 class="logo">Шесть соток</h1>
+            <p class="greet" id="greet">Здравствуйте, сосед!</p>
+          </div>
+          <div class="enamel-badge" id="enamel-badge" aria-hidden="true">
+            <span class="badge-label">разряд</span>
+            <span class="badge-num" id="badge-level">1</span>
+          </div>
+        </div>
+        <div class="mantel">
+          <div class="calendar" id="calendar" data-testid="calendar">
+            <div class="cal-head">Календарь</div>
+            <div class="cal-num" id="cal-day" data-testid="cal-day">1</div>
+            <div class="cal-month" id="cal-month">день из 12</div>
+            <div class="cal-season" id="cal-season" data-testid="cal-season">Весна</div>
+            <div class="cal-eta" id="cal-eta" data-testid="cal-eta">до лета 3:00</div>
+          </div>
+          <div class="radio" id="radio" data-testid="radio">
+            <div class="radio-top">
+              <span class="radio-brand">Эфир</span>
+              <div class="radio-knob" aria-hidden="true"></div>
+            </div>
+            <div class="radio-scale" aria-hidden="true"></div>
+            <p class="radio-label">Прогноз погоды</p>
+            <p class="radio-text" id="weather-today" data-testid="weather-today">Сегодня: ясно</p>
+            <p class="radio-text tomorrow" id="weather-tomorrow" data-testid="weather-tomorrow">Завтра: облачно</p>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <section class="status" aria-label="Состояние участка">
+      <div class="stat coins" id="stat-coins" data-testid="coins">
+        <span class="coin-icon" aria-hidden="true"></span>
+        <span class="value">0</span>
+        <span class="rub-label">руб.</span>
+      </div>
+      <div class="stat level">
+        <div class="level-row">
+          <span>Разряд <b id="stat-level" data-testid="level">1</b></span>
+          <span class="xp-label" id="stat-xp">0 / 30</span>
+        </div>
+        <div class="xp-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div class="xp-fill" id="xp-fill"></div>
+        </div>
+      </div>
+    </section>
+
+    <div id="season-warn" class="season-warn hidden" data-testid="season-warn"></div>
+
+    <main class="stage">
+      <section id="view-home" class="view" data-view="home">
+        <div class="home-scene" id="home-scene" data-testid="home-scene">
+          <div class="weather-layer home-weather" id="home-weather-layer" aria-hidden="true"></div>
+          <div class="leaf-layer home-leaves" aria-hidden="true"></div>
+          <div id="home-art" data-testid="home-art"></div>
+          <button type="button" class="farmer-hit" data-farmer="1" data-testid="farmer" aria-label="Поговорить с хозяином"></button>
+          <div class="farmer-speech hidden" id="farmer-speech" data-testid="farmer-speech"></div>
+          <div class="home-hud">
+            <p class="greet home-greet" id="home-greet" data-testid="home-greet">Здравствуйте, сосед!</p>
+            <div class="home-stats">
+              <div class="stat coins" data-testid="home-coins">
+                <span class="coin-icon" aria-hidden="true"></span>
+                <span class="value" id="home-coins-value">0</span>
+                <span class="rub-label">руб.</span>
+              </div>
+              <div class="home-level">
+                <span>Разряд <b id="home-level">1</b></span>
+                <span class="xp-label" id="home-xp">0 / 30</span>
+                <div class="xp-bar"><div class="xp-fill" id="home-xp-fill"></div></div>
+              </div>
+            </div>
+            <div class="home-cal" data-testid="home-calendar">
+              <span id="home-cal-day" data-testid="home-cal-day">1</span>
+              <span id="home-cal-season" data-testid="home-cal-season">Весна</span>
+              <span id="home-cal-eta" data-testid="home-cal-eta">до лета 3:00</span>
+            </div>
+            <div class="home-weather-text">
+              <span id="home-weather-today" data-testid="home-weather-today"></span>
+              <span id="home-weather-tomorrow" data-testid="home-weather-tomorrow"></span>
+            </div>
+            <div class="home-notes" id="home-notes" data-testid="home-notes"></div>
+            <div class="home-actions">
+              <button type="button" class="btn primary" data-nav="upgrades" data-testid="nav-upgrades">Улучшения</button>
+              <button type="button" class="btn" data-nav="farm" data-testid="home-to-farm">Участок</button>
+              <button type="button" class="btn" data-nav="yard" data-testid="home-to-yard">Двор</button>
+              <button type="button" class="btn" data-nav="shop" data-testid="home-to-shop">Сельпо</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-upgrades" class="view hidden" data-view="upgrades">
+        <h2>Улучшения участка</h2>
+        <p class="hint">Покупайте по разряду и рублям — участок на главной сразу меняется</p>
+        <div class="cards" id="upgrade-list" data-testid="upgrade-list"></div>
+        <button type="button" class="btn primary" data-nav="home" data-testid="upgrades-back">На дачу</button>
+      </section>
+
+      <section id="view-farm" class="view hidden" data-view="farm">
+        <div class="yard" id="yard" data-testid="yard">
+          <div class="weather-layer" id="weather-layer" aria-hidden="true"></div>
+          <div class="leaf-layer" aria-hidden="true"></div>
+          <div class="yard-decor" aria-hidden="true">
+            <div class="dacha-house"></div>
+            <div class="sedan">
+              <div class="sedan-cabin"></div>
+              <div class="sedan-body"></div>
+              <div class="sedan-bumper"></div>
+              <div class="sedan-wheel w1"></div>
+              <div class="sedan-wheel w2"></div>
+            </div>
+          </div>
+          <div class="picket picket-top" aria-hidden="true"></div>
+          <div class="field" id="field" data-testid="field"></div>
+          <div class="greenhouse-wrap">
+            <div class="greenhouse-label">Теплица</div>
+            <div class="greenhouse-row" id="greenhouse" data-testid="greenhouse"></div>
+          </div>
+          <div class="picket picket-bottom" aria-hidden="true"></div>
+          <p class="hint yard-hint" id="farm-hint">Нажмите на грядку, чтобы посадить семена</p>
+        </div>
+      </section>
+
+      <section id="view-shop" class="view hidden" data-view="shop">
+        <h2>Сельпо</h2>
+        <p class="hint" id="shop-hint">В сезоне — без серого. Остальное подождёт своего времени</p>
+        <div class="shop-sections">
+          <h3 class="section-title">Семена и цветы</h3>
+          <div class="cards" id="shop-list" data-testid="shop-list"></div>
+          <h3 class="section-title">Для двора</h3>
+          <div class="cards" id="shop-feed" data-testid="shop-feed"></div>
+        </div>
+      </section>
+
+      <section id="view-yard" class="view hidden" data-view="yard">
+        <h2>Двор</h2>
+        <p class="hint" id="yard-hint">Купите загон, поселите животных, кормите и собирайте продукцию</p>
+        <div id="pens-info" class="pens-info" data-testid="pens-info"></div>
+        <div class="pens-grid" id="pens-grid" data-testid="pens-grid"></div>
+        <h3 class="section-title">Ярмарка скота</h3>
+        <div class="cards" id="animal-shop" data-testid="animal-shop"></div>
+      </section>
+
+      <section id="view-barn" class="view hidden" data-view="barn">
+        <h2>Сарай</h2>
+        <p class="hint">Урожай, цветы и продукты двора можно сдать за рубли</p>
+        <div class="cards" id="barn-list" data-testid="barn-list"></div>
+        <button type="button" class="btn primary hidden" id="btn-sell-all" data-testid="sell-all">Сдать всё</button>
+      </section>
+    </main>
+
+    <nav class="dock dock-5" aria-label="Разделы">
+      <button type="button" class="dock-btn active" data-nav="home" data-testid="nav-home">
+        <span class="dock-icon home-ico" aria-hidden="true"></span>
+        Дача
+      </button>
+      <button type="button" class="dock-btn" data-nav="farm" data-testid="nav-farm">
+        <span class="dock-icon farm-ico" aria-hidden="true"></span>
+        Участок
+      </button>
+      <button type="button" class="dock-btn" data-nav="shop" data-testid="nav-shop">
+        <span class="dock-icon shop-ico" aria-hidden="true"></span>
+        Сельпо
+      </button>
+      <button type="button" class="dock-btn" data-nav="yard" data-testid="nav-yard">
+        <span class="dock-icon yard-ico" aria-hidden="true"></span>
+        Двор
+      </button>
+      <button type="button" class="dock-btn" data-nav="barn" data-testid="nav-barn">
+        <span class="dock-icon barn-ico" aria-hidden="true"></span>
+        Сарай
+      </button>
+    </nav>
+  </div>
+
+  <div id="sheet" class="sheet hidden" data-testid="sheet" role="dialog" aria-modal="true">
+    <button type="button" class="sheet-backdrop" data-close-sheet aria-label="Закрыть"></button>
+    <div class="sheet-panel">
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <div id="sheet-content"></div>
+    </div>
+  </div>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+
+  <script src="data.js"></script>
+  <script src="home.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
