@@ -2,7 +2,7 @@
 window.SOTOK_DATA = (() => {
   "use strict";
 
-  const ASSET_VER = "20261114c";
+  const ASSET_VER = "20261114d";
 
   /* One-time owner gift: only the SHA-256 of the secret code is stored here. */
   const GIFT = {

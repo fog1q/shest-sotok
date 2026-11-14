@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VER = (window.SOTOK_DATA && window.SOTOK_DATA.ASSET_VER) || "20261114c";
+  const VER = (window.SOTOK_DATA && window.SOTOK_DATA.ASSET_VER) || "20261114d";
   const A = (path) => `assets/${path}.webp?v=${VER}`;
   const TRANSPORT = ["bike", "moped", "sedan"];
 
@@ -89,7 +89,10 @@
     const inner = (opts && opts.inner) || "";
     const sh = shadow ? `<span class="ground-shadow" aria-hidden="true"></span>` : "";
     const winter = opts && opts.winter;
-    const drift = winter && shadow ? `<span class="snow-drift" aria-hidden="true"></span>` : "";
+    const skipDrift = opts && opts.noDrift;
+    const drift = winter && shadow && !skipDrift
+      ? `<span class="snow-drift" aria-hidden="true"><i></i><i></i><i></i></span>`
+      : "";
     const cap = winter && opts.snowCap ? `<span class="snow-cap" aria-hidden="true"></span>` : "";
     const art = src
       ? `<img class="prop-art" src="${src}" alt="" draggable="false"${extra ? ` ${extra}` : ""}>`
@@ -227,7 +230,7 @@
         </button>`, ...W }) : ""}
       ${plotsLayer(plots, season)}
       ${pensLayer(pens, animals, season)}
-      ${prop(`fence fence-${fenceLv}`, A("fence/fence-" + fenceLv), placeStyle(LAYOUT.fence, season), "", { winter: season === "winter", shadow: true })}
+      ${prop(`fence fence-${fenceLv}`, A("fence/fence-" + fenceLv), placeStyle(LAYOUT.fence, season), "", { winter: season === "winter", shadow: true, noDrift: true })}
       ${upgrades.bench ? prop("bench", A("decor/bench"), placeStyle(LAYOUT.bench, season), "", { winter: season === "winter" }) : ""}
       ${prop(`transport transport-${transLv}`, A("transport/" + TRANSPORT[transLv]), placeStyle(LAYOUT.transport, season, transLv), "", { winter: season === "winter" })}
       ${prop("farmer", A("farmer/" + season), placeStyle(LAYOUT.farmer, season), 'data-testid="farmer-art"', { winter: season === "winter" })}

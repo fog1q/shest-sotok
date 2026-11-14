@@ -18,7 +18,7 @@
 
   const SAVE_KEY = "shest-sotok-v5";
   const SAVE_KEYS_OLD = ["shest-sotok-v4", "shest-sotok-v3", "shest-sotok-v2", "shest-sotok-v1"];
-  const ASSET_VER = D.ASSET_VER || "20261114c";
+  const ASSET_VER = D.ASSET_VER || "20261114d";
   const LOOP = window.SOTOK_LOOP;
   const TICK_MS = 250;
   const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
