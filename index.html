@@ -1,14 +1,13 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <base href="/shest-sotok/" />
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <meta name="color-scheme" content="light" />
   <meta name="theme-color" content="#8b1e18" />
   <title>Шесть соток</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="styles.css?v=20261114d" />
+  <link rel="stylesheet" href="styles.css?v=20261115d" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%238B1E18'/%3E%3Crect x='6' y='6' width='52' height='52' rx='4' fill='none' stroke='%23D4B03A' stroke-width='3'/%3E%3Cpath d='M32 16 L44 32 L32 48 L20 32 Z' fill='%234F5530'/%3E%3Ccircle cx='32' cy='32' r='5' fill='%23D4B03A'/%3E%3C/svg%3E" />
 </head>
 <body>
@@ -165,6 +164,7 @@
         <div class="pens-grid" id="pens-grid" data-testid="pens-grid"></div>
         <h3 class="section-title">Ярмарка скота</h3>
         <div class="cards" id="animal-shop" data-testid="animal-shop"></div>
+        <div id="yard-extra" data-testid="yard-extra"></div>
       </section>
 
       <section id="view-barn" class="view hidden" data-view="barn">
@@ -231,11 +231,22 @@
     <div class="panel-sheet" id="craft-panel" data-testid="craft-panel"></div>
   </div>
 
+  <div id="wardrobe-overlay" class="panel-overlay hidden" data-testid="wardrobe-overlay">
+    <button type="button" class="panel-backdrop" data-close-wardrobe aria-label="Закрыть"></button>
+    <div class="panel-sheet wardrobe-sheet" id="wardrobe-panel" data-testid="wardrobe-panel"></div>
+  </div>
+
+  <div id="visit-overlay" class="panel-overlay hidden" data-testid="visit-overlay">
+    <button type="button" class="panel-backdrop" data-close-visit aria-label="Закрыть"></button>
+    <div class="panel-sheet visit-sheet" id="visit-panel" data-testid="visit-panel"></div>
+  </div>
+
   <div id="toasts" class="toasts" aria-live="polite"></div>
 
-  <script src="data.js?v=20261114d"></script>
-  <script src="home.js?v=20261114d"></script>
-  <script src="loop.js?v=20261114d"></script>
-  <script src="game.js?v=20261114d"></script>
+  <script src="data.js?v=20261115d"></script>
+  <script src="home.js?v=20261115d"></script>
+  <script src="loop.js?v=20261115d"></script>
+  <script src="systems-v6.js?v=20261115d"></script>
+  <script src="game.js?v=20261115d"></script>
 </body>
 </html>

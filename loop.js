@@ -108,7 +108,8 @@ window.SOTOK_LOOP = (() => {
       }
       if (!plot.pest && age > pestAfter && plot.kind !== "greenhouse") {
         const roll = ((host && host.hash32) ? host.hash32(seed * 43 + hid * 19 + Math.floor(age / pestAfter)) : age) % 100;
-        if (roll < 28) {
+        const pestMul = (window.SOTOK_V6 && window.SOTOK_V6.pestChanceMul(state)) || 1;
+        if (roll < 28 * pestMul) {
           const pests = D().PEST_ORDER;
           plot.pest = pests[Math.abs(hid + seed) % pests.length];
         }
@@ -530,6 +531,7 @@ window.SOTOK_LOOP = (() => {
     tickStations(state, ts);
     fillQuests(state, ts);
     fillOrders(state, ts);
+    if (window.SOTOK_V6 && window.SOTOK_V6.tick) window.SOTOK_V6.tick(state, dt, ts, weather, cal);
   }
 
   function timeOfDay(cal) {

@@ -2018,13 +2018,77 @@ body { display: flex; justify-content: center; }
   left: 8%;
   width: 84%;
   bottom: 0;
-  height: 14px;
-  transform: translateY(45%);
-  background: radial-gradient(ellipse at center, rgba(30, 22, 10, 0.4) 0%, rgba(30, 22, 10, 0.16) 42%, rgba(30, 22, 10, 0) 72%);
+  height: 18px;
+  transform: translateY(40%);
+  background: radial-gradient(ellipse at center, rgba(30, 22, 10, 0.48) 0%, rgba(30, 22, 10, 0.2) 44%, rgba(30, 22, 10, 0) 74%);
   z-index: 0;
   pointer-events: none;
 }
-.home-layers .prop.farmer .ground-shadow,
+.home-layers .prop.house .ground-shadow,
+.home-layers .prop.sarai .ground-shadow {
+  left: 4%;
+  width: 92%;
+  height: 26px;
+  transform: translateY(42%);
+  background: radial-gradient(ellipse at center, rgba(30, 22, 10, 0.52) 0%, rgba(30, 22, 10, 0.22) 48%, rgba(30, 22, 10, 0) 74%);
+}
+.home-layers .prop.home-plots .ground-shadow,
+.home-layers .prop.home-pens .ground-shadow {
+  left: 6%;
+  width: 88%;
+  height: 22px;
+  transform: translateY(28%);
+}
+.ground-tufts {
+  position: absolute;
+  left: 2%;
+  width: 96%;
+  bottom: -1%;
+  height: 9%;
+  z-index: 2;
+  pointer-events: none;
+  overflow: visible;
+}
+.ground-tufts i {
+  position: absolute;
+  bottom: 0;
+  display: block;
+  width: 14%;
+  height: 100%;
+  border-radius: 60% 60% 40% 40%;
+  background:
+    radial-gradient(ellipse at 50% 70%, #5f9a2c 0%, #3d7a16 42%, rgba(61, 122, 22, 0) 72%),
+    radial-gradient(ellipse at 30% 90%, #6eae34 0%, rgba(61, 122, 22, 0) 60%);
+  pointer-events: none;
+}
+.ground-tufts i:nth-child(1) { left: 4%; width: 16%; height: 90%; }
+.ground-tufts i:nth-child(2) { left: 22%; width: 13%; height: 70%; }
+.ground-tufts i:nth-child(3) { left: 44%; width: 18%; height: 100%; }
+.ground-tufts i:nth-child(4) { left: 66%; width: 14%; height: 80%; }
+.ground-tufts i:nth-child(5) { left: 82%; width: 15%; height: 88%; }
+#app[data-season="winter"] .ground-tufts,
+.home-layers .prop.winter .ground-tufts { display: none; }
+.prop.house .snow-drift,
+.prop.sarai .snow-drift {
+  left: -6%;
+  width: 112%;
+  bottom: -10%;
+  height: 16%;
+  z-index: 2;
+}
+.home-layers .prop.home-cat .ground-shadow,
+.home-layers .prop.sharik .ground-shadow,
+.home-layers .prop.beehive .ground-shadow {
+  left: 16%;
+  width: 68%;
+  height: 12px;
+}
+.home-layers .prop.farmer .ground-shadow {
+  left: 14%;
+  width: 72%;
+  height: 18px;
+  transform: translateY(36%);
+}
 .home-layers .prop.well .ground-shadow,
 .home-layers .prop.apple .ground-shadow,
 .home-layers .prop.birdpole .ground-shadow {
@@ -2060,28 +2124,37 @@ body { display: flex; justify-content: center; }
   border-radius: 1px;
   z-index: 1;
 }
-.home-layers .plots-grid {
+.home-layers .plots-beds {
+  width: 100%;
+  height: auto;
+  display: block;
   position: relative;
   z-index: 1;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 2px;
-  width: 100%;
+  pointer-events: none;
+}
+.home-layers .plots-crops {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
 }
 .home-layers .mini-plot {
-  aspect-ratio: 4 / 3;
-  position: relative;
+  position: absolute;
   overflow: visible;
+  pointer-events: none;
 }
-.home-layers .plots-grid { overflow: visible; gap: 3px; }
-.home-layers .mini-plot img {
-  width: 100%;
-  height: 100%;
+.home-layers .mini-plot .plot-crop {
+  position: absolute;
+  left: 12%;
+  bottom: 10%;
+  width: 76%;
+  height: 88%;
   object-fit: contain;
+  object-position: center bottom;
+  pointer-events: none;
 }
-.home-layers .mini-plot .bed { position: absolute; inset: 0; }
-.home-layers .mini-plot .ripe { position: absolute; inset: 12%; }
-.home-layers .mini-plot.shut img { filter: saturate(0.4) brightness(0.85); opacity: 0.8; }
+.home-layers .mini-plot .plot-crop.ripe { filter: drop-shadow(0 1px 0 rgba(0,0,0,.15)); }
+.home-layers .mini-plot.shut { opacity: 1; }
 .home-layers .pen-frame {
   width: 100%;
   height: auto;
@@ -2091,27 +2164,28 @@ body { display: flex; justify-content: center; }
 }
 .home-layers .home-animals {
   position: absolute;
-  left: 16%;
-  right: 16%;
-  top: 28%;
-  bottom: 14%;
+  left: 18%;
+  right: 18%;
+  top: 24%;
+  bottom: 16%;
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
   align-content: flex-end;
   justify-content: center;
-  gap: 1px;
+  gap: 2px;
   z-index: 2;
-  overflow: hidden;
+  overflow: visible;
   pointer-events: none;
 }
 .home-layers .home-animal {
-  width: 38%;
-  height: 58%;
+  width: 30%;
+  height: 68%;
   object-fit: contain;
   object-position: center bottom;
+  filter: drop-shadow(0 2px 1px rgba(30, 22, 10, 0.35));
 }
-.home-layers .home-animal.baby { width: 30%; height: 48%; }
+.home-layers .home-animal.baby { width: 24%; height: 52%; }
 .home-layers .farmer > .prop-art {
   transform-origin: center bottom;
   animation: farmerBreath 3.6s ease-in-out infinite;
@@ -2318,12 +2392,12 @@ body { display: flex; justify-content: center; }
 #home-art { z-index: 1; }
 .home-hud { z-index: 12; }
 .farmer-hit {
-  left: auto;
-  right: 0;
+  left: 0%;
+  right: auto;
   top: auto;
-  bottom: 8%;
-  width: 30%;
-  height: 38%;
+  bottom: 7%;
+  width: 42%;
+  height: 50%;
   z-index: 8;
 }
 .farmer-speech { z-index: 13; }
@@ -2773,10 +2847,7 @@ html.sim-tg-inset .tg-sim-chrome[hidden] { display: block; }
 .snow-cap { display: none; }
 
 .home-paths {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
+  display: none;
 }
 .home-paths.winter {
   background:
@@ -3006,4 +3077,139 @@ html.sim-tg-inset .tg-sim-chrome[hidden] { display: block; }
 
 @media (prefers-reduced-motion: reduce) {
   .cloud, .bird, .smoke, .prop.apple.sway .prop-art, .home-animals img, .home-animal, .prop.farmer .prop-art { animation: none; }
+}
+
+
+/* ——— v6 wardrobe, visits, home extras ——— */
+.farmer-stack {
+  position: relative;
+  width: 100%;
+  display: block;
+  line-height: 0;
+}
+.farmer-stack .farmer-base {
+  position: relative;
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: contain;
+  object-position: center bottom;
+  pointer-events: none;
+}
+.farmer-stack .farmer-layer:not(.farmer-base) {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center bottom;
+  pointer-events: none;
+}
+.home-layers .prop.farmer.layered {
+  aspect-ratio: 281 / 639;
+}
+.home-layers .prop.farmer.layered .farmer-fit {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.home-layers .prop.farmer.layered .farmer-stack {
+  position: absolute;
+  left: 50%;
+  margin-left: -72.5%;
+  bottom: -5%;
+  width: 145%;
+  transform-origin: center bottom;
+  animation: farmerBreath 3.6s ease-in-out infinite;
+}
+
+.wardrobe-sheet {
+  max-height: 86vh;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+.wardrobe-body { min-height: 0; }
+.farmer-preview {
+  width: min(220px, 58%);
+  margin: 0 auto 6px;
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: var(--cream, #f3e6c0);
+  padding: 8px 0 6px;
+}
+.farmer-preview .farmer-stack { width: 100%; }
+.ward-toggle {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-weight: 800;
+  font-size: 13px;
+  margin: 8px 0 12px;
+}
+.ward-slot h3 { margin: 10px 0 6px; font-size: 14px; }
+.ward-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.ward-item {
+  border: 2px solid var(--wood-dark);
+  background: var(--cream);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+  min-height: 0;
+}
+.ward-item img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  object-position: center;
+  background: #efe6c8;
+}
+.ward-item .ward-name { font-size: 10px; font-weight: 800; line-height: 1.2; }
+.ward-item .ward-meta { font-size: 9px; color: #5a3a16; }
+.ward-item.on { background: #f7efc8; border-color: var(--mustard-dark); box-shadow: 0 0 0 2px var(--mustard); }
+.ward-item.locked { opacity: 0.55; }
+
+.visit-grid { margin-top: 8px; }
+.visit-plot { display: flex; gap: 8px; align-items: center; }
+.visit-actions { display: flex; flex-direction: column; gap: 4px; }
+.holiday-card {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  border: 2px solid var(--wood-dark);
+  background: #f7efc8;
+  padding: 8px;
+  margin-top: 12px;
+}
+.holiday-card img { width: 72px; height: 72px; object-fit: contain; }
+.home-layers .prop.sharik .prop-art,
+.home-layers .prop.home-cat .prop-art,
+.home-layers .prop.bush .prop-art,
+.home-layers .prop.beehive .prop-art {
+  object-fit: contain;
+  object-position: center bottom;
+}
+.home-layers .prop.holiday-decor .prop-art {
+  object-fit: contain;
+  object-position: center bottom;
+  filter: drop-shadow(0 2px 0 rgba(0,0,0,.2));
+}
+.home-layers .prop.home-cat { z-index: 10; }
+
+@media (prefers-reduced-motion: reduce) {
+  .home-layers .prop.farmer.layered .farmer-stack { animation: none; }
 }

@@ -2,7 +2,7 @@
 window.SOTOK_DATA = (() => {
   "use strict";
 
-  const ASSET_VER = "20261114d";
+  const ASSET_VER = "20261115d";
 
   /* One-time owner gift: only the SHA-256 of the secret code is stored here. */
   const GIFT = {
@@ -84,6 +84,8 @@ window.SOTOK_DATA = (() => {
     pig:     { growMs: 6 * 60_000, feedEveryMs: 12 * 60_000, productTime: 0 },
     sheep:   { growMs: 5 * 60_000, feedEveryMs: 12 * 60_000, productTime: 8 * 60_000 },
     cow:     { growMs: 8 * 60_000, feedEveryMs: 15 * 60_000, productTime: 10 * 60_000 },
+    duck:    { growMs: 3 * 60_000, feedEveryMs: 10 * 60_000, productTime: 3 * 60_000 },
+    goose:   { growMs: 4 * 60_000, feedEveryMs: 12 * 60_000, productTime: 5 * 60_000 },
   };
 
   const SEASONS = ["spring", "summer", "autumn", "winter"];
@@ -178,9 +180,15 @@ window.SOTOK_DATA = (() => {
     pickles: { id: "pickles", name: "Соленья", sellPrice: 78, craft: true },
     sauerkraut: { id: "sauerkraut", name: "Квашеная капуста", sellPrice: 72, craft: true },
     socks: { id: "socks", name: "Шерстяные носки", sellPrice: 60, craft: true },
+    honey: { id: "honey", name: "Мёд", sellPrice: 48, craft: false },
+    apple: { id: "apple", name: "Яблоки", sellPrice: 16 },
+    currant: { id: "currant", name: "Смородина", sellPrice: 18 },
+    raspberry: { id: "raspberry", name: "Малина", sellPrice: 20 },
+    cherry: { id: "cherry", name: "Вишня", sellPrice: 22 },
+    bone: { id: "bone", name: "Кость", sellPrice: 0, buyPrice: 10, tool: true },
   };
 
-  const TOOL_IDS = ["fertilizer", "dust", "ash"];
+  const TOOL_IDS = ["fertilizer", "dust", "ash", "bone"];
   const CRAFT_IDS = ["jam", "smetana", "tvorog", "pickles", "sauerkraut", "socks"];
 
   const WATER_BONUS = 1.25;
@@ -252,9 +260,9 @@ window.SOTOK_DATA = (() => {
   const MAX_ACTIVE_QUESTS = 3;
 
   const NEIGHBORS = {
-    nyura: { id: "nyura", name: "Баба Нюра", portrait: "npc/nyura", wants: ["jam", "strawberry", "tulip", "peony", "narcissus"] },
-    kolya: { id: "kolya", name: "Дядя Коля", portrait: "npc/kolya", wants: ["potato", "pickles", "milk", "egg", "cabbage"] },
-    tanka: { id: "tanka", name: "Танька из сельпо", portrait: "npc/tanka", wants: ["tulip", "aster", "egg", "smetana", "cornflower"] },
+    nyura: { id: "nyura", name: "Баба Нюра", portrait: "npc/nyura", wants: ["jam", "strawberry", "tulip", "peony", "narcissus", "currant"], dog: "Жучка", style: ["flower", "berry"] },
+    kolya: { id: "kolya", name: "Дядя Коля", portrait: "npc/kolya", wants: ["potato", "pickles", "milk", "egg", "cabbage", "apple"], dog: "Бобик", style: ["staple"] },
+    tanka: { id: "tanka", name: "Танька из сельпо", portrait: "npc/tanka", wants: ["tulip", "aster", "egg", "smetana", "cornflower", "honey"], dog: "Рекс", style: ["shop"] },
   };
   const NEIGHBOR_ORDER = ["nyura", "kolya", "tanka"];
   const ORDER_TTL_MS = 15 * 60_000;
@@ -377,15 +385,43 @@ window.SOTOK_DATA = (() => {
       productXp: 6,
       productBonus: 1,
     },
+    duck: {
+      id: "duck",
+      babyName: "Утёнок",
+      adultName: "Утка",
+      unlockLevel: 2,
+      buyPrice: 55,
+      sellBaby: 22,
+      sellAdult: 44,
+      growMs: 24_000,
+      feedEveryMs: 18_000,
+      product: "egg",
+      productTime: 16_000,
+      productXp: 3,
+    },
+    goose: {
+      id: "goose",
+      babyName: "Гусёнок",
+      adultName: "Гусь",
+      unlockLevel: 3,
+      buyPrice: 90,
+      sellBaby: 36,
+      sellAdult: 70,
+      growMs: 28_000,
+      feedEveryMs: 20_000,
+      product: "down",
+      productTime: 18_000,
+      productXp: 4,
+    },
   };
 
-  const ANIMAL_ORDER = ["chicken", "rabbit", "goat", "pig", "sheep", "cow"];
+  const ANIMAL_ORDER = ["chicken", "rabbit", "duck", "goat", "goose", "pig", "sheep", "cow"];
 
   const PLOT_PRICE = [0, 0, 45, 0, 80, 140, 220, 320, 450];
   const START_UNLOCKED = [0, 1, 3];
   const GREENHOUSE_PRICE = [100, 180];
-  const PEN_PRICE = [0, 80, 150, 240, 350, 500];
-  const MAX_PENS = 6;
+  const PEN_PRICE = [0, 80, 150, 240, 350, 500, 650, 820];
+  const MAX_PENS = 8;
   const START_PENS = 1;
   const XP_TABLE = [0, 30, 80, 160, 280, 450, 680, 1000, 1400];
   const WINTER_FEED_FACTOR = 0.65;
@@ -542,11 +578,48 @@ window.SOTOK_DATA = (() => {
       bonus: { station: "spinner" },
       flavor: "Из шерсти вяжутся носки.",
     },
+    beehive: {
+      id: "beehive",
+      name: "Улей",
+      type: "toggle",
+      price: 90,
+      unlockLevel: 2,
+      bonus: { bees: true },
+      flavor: "Пчёлы носят мёд, если рядом цветы.",
+    },
+    currant: {
+      id: "currant",
+      name: "Смородина",
+      type: "toggle",
+      price: 45,
+      unlockLevel: 2,
+      bonus: { perennial: "currant" },
+      flavor: "Куст сажают раз, ягоды — каждое лето.",
+    },
+    raspberry: {
+      id: "raspberry",
+      name: "Малина",
+      type: "toggle",
+      price: 55,
+      unlockLevel: 3,
+      bonus: { perennial: "raspberry" },
+      flavor: "Малинник даёт ягоды всё лето.",
+    },
+    cherry: {
+      id: "cherry",
+      name: "Вишня",
+      type: "toggle",
+      price: 80,
+      unlockLevel: 3,
+      bonus: { perennial: "cherry" },
+      flavor: "Вишня наливается к середине лета.",
+    },
   };
 
   const UPGRADE_ORDER = [
     "house", "fence", "transport", "sarai",
-    "well", "bathhouse", "apple", "bench", "antenna", "birdhouse",
+    "well", "bathhouse", "apple", "currant", "raspberry", "cherry",
+    "bench", "antenna", "birdhouse", "beehive",
     "kitchen", "cellar", "separator", "spinner",
   ];
 
@@ -620,6 +693,121 @@ window.SOTOK_DATA = (() => {
   // Apply as soon as the script loads so game.js sees the right growMs.
   applyTiming(isFastMode());
 
+
+  const RIPEN = {
+    overripeAfterMs: 90_000,
+    spoilAfterMs: 210_000,
+    overripeAfterMsFast: 6_000,
+    spoilAfterMsFast: 14_000,
+    overripeYield: 1,
+    overripePriceMult: 0.55,
+  };
+
+  const VISIT = {
+    plots: 6,
+    dailyHelp: 8,
+    dailyRaid: 5,
+    helpCoins: 4,
+    helpXp: 2,
+    stealMin: 1,
+    stealMax: 2,
+    catchChanceFed: 0.45,
+    catchChanceHungry: 0.14,
+    catchFine: 6,
+    dogFeedHours: 4,
+    dogFeedMsFast: 25_000,
+  };
+
+  const SHARIK = {
+    buyPrice: 70,
+    unlockLevel: 2,
+    feedItem: "bone",
+    feedLastsMs: 4 * 60 * 60_000,
+    feedLastsMsFast: 30_000,
+    raidEveryMs: 3 * 60_000,
+    raidEveryMsFast: 12_000,
+    raidChance: 0.28,
+    maxRaidsPerDay: 2,
+    catchFed: 0.72,
+    catchHungry: 0.18,
+    catchNone: 0,
+  };
+
+  const PERENNIALS = {
+    apple:     { id: "apple", name: "Яблоня", product: "apple", count: 3, seasons: ["summer", "autumn"], unlockLevel: 2, xp: 6, flavor: "Яблоки наливаются к концу лета." },
+    currant:   { id: "currant", name: "Смородина", product: "currant", count: 3, seasons: ["summer"], unlockLevel: 2, xp: 5, flavor: "Кисти красной смородины." },
+    raspberry: { id: "raspberry", name: "Малина", product: "raspberry", count: 3, seasons: ["summer"], unlockLevel: 3, xp: 6, flavor: "Малина к чаю." },
+    cherry:    { id: "cherry", name: "Вишня", product: "cherry", count: 3, seasons: ["summer"], unlockLevel: 3, xp: 7, flavor: "Тёмная вишня на ветке." },
+  };
+  const PERENNIAL_ORDER = ["apple", "currant", "raspberry", "cherry"];
+
+  const BEES = {
+    product: "honey",
+    timeMs: 8 * 60_000,
+    timeMsFast: 14_000,
+    xp: 6,
+    flowerTypes: ["flower"],
+  };
+
+  const CATS = {
+    ginger: { id: "ginger", name: "Рыжик", color: "рыжий", price: 40, unlockLevel: 1, flavor: "Рыжий охотник до мышей." },
+    tabby:  { id: "tabby", name: "Полосатик", color: "серый полосатый", price: 48, unlockLevel: 2, flavor: "Серый полосатый дворняжка." },
+    black:  { id: "black", name: "Уголёк", color: "чёрный", price: 52, unlockLevel: 2, flavor: "Чёрный, как уголёк из печи." },
+    calico: { id: "calico", name: "Машка", color: "трёхцветная", price: 65, unlockLevel: 3, flavor: "Трёхцветная Машка, хозяйка сарая." },
+    white:  { id: "white", name: "Снежок", color: "белый", price: 70, unlockLevel: 4, flavor: "Белый Снежок любит подоконник." },
+  };
+  const CAT_ORDER = ["ginger", "tabby", "black", "calico", "white"];
+
+  const HOLIDAYS = [
+    { id: "subbotnik", name: "Субботник", season: "spring", days: [3, 4], decor: "subbotnik", hand: "hand-rake",
+      quest: { type: "weed", count: 2, coins: 24, xp: 8, title: "Субботник", text: "Прополите 2 грядки к общему делу" },
+      reward: { coins: 20, items: { ash: 1 } } },
+    { id: "mayday", name: "Первомай", season: "spring", days: [8, 9, 10], decor: "mayday", hand: "hand-bouquet",
+      quest: { type: "harvest", crop: "tulip", count: 1, coins: 36, xp: 10, title: "Букет к Первомаю", text: "Соберите тюльпаны к празднику" },
+      reward: { coins: 40, items: { tulip: 0 }, wardrobe: "hand-bouquet" } },
+    { id: "harvest", name: "День урожая", season: "autumn", days: [9, 10, 11], decor: "harvest", hand: "hand-basket",
+      quest: { type: "sell", item: "potato", count: 2, coins: 32, xp: 10, title: "День урожая", text: "Сдайте 2 картошки на ярмарку" },
+      reward: { coins: 50, items: { fertilizer: 1 } } },
+    { id: "newyear", name: "Новый год", season: "winter", days: [11, 12], decor: "newyear",
+      quest: { type: "collect", item: "egg", count: 2, coins: 30, xp: 10, title: "К новогоднему столу", text: "Соберите 2 яйца" },
+      reward: { coins: 60, items: { feed: 2 }, wardrobe: "hat-ushanka" } },
+  ];
+
+  const WARDROBE = {
+    slots: ["head", "top", "bottom", "hand"],
+    slotName: { head: "Головной убор", top: "Верх", bottom: "Штаны и обувь", hand: "В руках" },
+    seasonal: {
+      spring: { head: "hat-cap", top: "top-shirt", bottom: "pants-green", hand: "hand-leika" },
+      summer: { head: "hat-straw", top: "top-telnyashka", bottom: "pants-blue", hand: "hand-shovel" },
+      autumn: { head: "hat-cap", top: "top-telogreika", bottom: "pants-yellow", hand: "hand-basket" },
+      winter: { head: "hat-ushanka", top: "top-sweater", bottom: "pants-valenki", hand: "hand-radio" },
+    },
+    items: {
+      "hat-cap":       { id: "hat-cap", slot: "head", name: "Кепка", price: 0, unlockLevel: 1 },
+      "hat-ushanka":   { id: "hat-ushanka", slot: "head", name: "Ушанка", price: 40, unlockLevel: 2 },
+      "hat-panama":    { id: "hat-panama", slot: "head", name: "Панама", price: 35, unlockLevel: 1 },
+      "hat-straw":     { id: "hat-straw", slot: "head", name: "Соломенная шляпа", price: 0, unlockLevel: 1 },
+      "top-shirt":     { id: "top-shirt", slot: "top", name: "Рубашка", price: 0, unlockLevel: 1 },
+      "top-telnyashka":{ id: "top-telnyashka", slot: "top", name: "Тельняшка", price: 0, unlockLevel: 1 },
+      "top-telogreika":{ id: "top-telogreika", slot: "top", name: "Телогрейка", price: 50, unlockLevel: 2 },
+      "top-sweater":   { id: "top-sweater", slot: "top", name: "Свитер", price: 55, unlockLevel: 2 },
+      "pants-green":   { id: "pants-green", slot: "bottom", name: "Зелёные брюки и кирзачи", price: 0, unlockLevel: 1 },
+      "pants-blue":    { id: "pants-blue", slot: "bottom", name: "Синие брюки и сапоги", price: 0, unlockLevel: 1 },
+      "pants-yellow":  { id: "pants-yellow", slot: "bottom", name: "Брюки и жёлтые резиновые", price: 30, unlockLevel: 1 },
+      "pants-valenki": { id: "pants-valenki", slot: "bottom", name: "Валенки", price: 45, unlockLevel: 2 },
+      "hand-leika":    { id: "hand-leika", slot: "hand", name: "Лейка", price: 0, unlockLevel: 1 },
+      "hand-shovel":   { id: "hand-shovel", slot: "hand", name: "Лопата", price: 0, unlockLevel: 1 },
+      "hand-pitchfork":{ id: "hand-pitchfork", slot: "hand", name: "Вилы", price: 25, unlockLevel: 2 },
+      "hand-basket":   { id: "hand-basket", slot: "hand", name: "Корзина", price: 20, unlockLevel: 1 },
+      "hand-accordion":{ id: "hand-accordion", slot: "hand", name: "Гармонь", price: 80, unlockLevel: 3 },
+      "hand-radio":    { id: "hand-radio", slot: "hand", name: "Радиоприёмник", price: 60, unlockLevel: 3 },
+      "hand-avoska":   { id: "hand-avoska", slot: "hand", name: "Авоська", price: 15, unlockLevel: 1 },
+      "hand-bouquet":  { id: "hand-bouquet", slot: "hand", name: "Букет", price: 0, unlockLevel: 1, holiday: "mayday" },
+      "hand-rake":     { id: "hand-rake", slot: "hand", name: "Грабли", price: 0, unlockLevel: 1, holiday: "subbotnik" },
+    },
+  };
+  const WARDROBE_FREE = ["hat-cap","hat-straw","top-shirt","top-telnyashka","pants-green","pants-blue","hand-leika","hand-shovel"];
+
   function defaultUpgrades() {
     return {
       house: 0,
@@ -636,6 +824,10 @@ window.SOTOK_DATA = (() => {
       cellar: false,
       separator: false,
       spinner: false,
+      beehive: false,
+      currant: false,
+      raspberry: false,
+      cherry: false,
     };
   }
 
@@ -653,5 +845,7 @@ window.SOTOK_DATA = (() => {
     DAILY_BONUS, FAIR, PROCESS_QUEUE,
     UPGRADES, UPGRADE_ORDER, FARMER_TIPS, defaultUpgrades,
     isFastMode, applyTiming, GIFT,
+    RIPEN, VISIT, SHARIK, PERENNIALS, PERENNIAL_ORDER, BEES,
+    CATS, CAT_ORDER, HOLIDAYS, WARDROBE, WARDROBE_FREE,
   };
 })();

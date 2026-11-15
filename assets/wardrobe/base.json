@@ -1,0 +1,21 @@
+{
+  "cx": 280,
+  "feet_y": 1050,
+  "mustache_y": 395,
+  "mustache_x": 280,
+  "head_top": 151,
+  "y0": 151,
+  "y1": 1050,
+  "x0": 96,
+  "x1": 457,
+  "grip_x": 447,
+  "grip_y": 590,
+  "width": 362,
+  "height": 900,
+  "target": {
+    "cx": 280,
+    "feet_y": 1050,
+    "mustache_y": 393,
+    "head_top": 150
+  }
+}

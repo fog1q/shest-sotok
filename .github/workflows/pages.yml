@@ -26,7 +26,7 @@ jobs:
       - name: Collect site
         run: |
           mkdir -p _site
-          cp -a index.html styles.css game.js home.js loop.js data.js carpet.svg .nojekyll README.md _site/
+          cp -a index.html styles.css game.js home.js loop.js data.js systems-v6.js carpet.svg .nojekyll README.md _site/
           cp -a fonts assets _site/
       - name: Setup Pages
         uses: actions/configure-pages@v5
